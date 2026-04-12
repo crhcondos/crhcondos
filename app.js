@@ -766,11 +766,6 @@ function renderWelcome() {
           </div>
           ${error}
         </form>
-        <div class="inline-note" style="margin-top:18px;">
-          ${safeText(t("demo_accounts"))}: <strong>admin@crhcondos.com / admin123</strong>,
-          <strong>mia@crhcondos.com / tenant123</strong>, or
-          <strong>julian@crhcondos.com / tenant123</strong>.
-        </div>
       </section>
     </div>
   `;
@@ -1335,43 +1330,18 @@ function renderTenantPayments() {
 
   return `
     <div class="page-grid">
-      <section class="section-card-grid">
-        <div class="panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="section-title">${safeText(t("make_payment"))}</h2>
-              <p class="section-copy">${safeText(t("make_payment_copy"))}</p>
-            </div>
-          </div>
-          <div class="payment-card">
-            <span class="metric-label">${safeText(t("suggested_amount"))}</span>
-            <strong class="metric-value">${safeText(formatCurrency(due))}</strong>
-            <p class="muted">${safeText(t("payment_demo_copy"))}</p>
-            <div class="button-row">
-              <button class="primary-button" type="button" data-action="make-payment">${safeText(t("make_payment"))}</button>
-            </div>
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="section-title">${safeText(t("make_payment"))}</h2>
+            <p class="section-copy">${safeText(t("make_payment_copy"))}</p>
           </div>
         </div>
-        <div class="panel">
-          <div class="panel-header">
-            <div>
-              <h2 class="section-title">${safeText(t("stripe_setup_status"))}</h2>
-              <p class="section-copy">${safeText(t("stripe_setup_copy"))}</p>
-            </div>
-          </div>
-          <div class="detail-list">
-            <div class="detail-item">
-              <strong>${safeText(t("mode"))}</strong>
-              <span>${safeText(localizeStatus(state.data.stripe.mode))}</span>
-            </div>
-            <div class="detail-item">
-              <strong>${safeText(t("checkout_endpoint"))}</strong>
-              <span>${safeText(state.data.stripe.checkoutEndpoint)}</span>
-            </div>
-            <div class="detail-item" style="grid-column: 1 / -1;">
-              <strong>${safeText(t("publishable_key"))}</strong>
-              <span>${safeText(state.data.stripe.publishableKey || t("not_configured"))}</span>
-            </div>
+        <div class="payment-card">
+          <span class="metric-label">${safeText(t("suggested_amount"))}</span>
+          <strong class="metric-value">${safeText(formatCurrency(due))}</strong>
+          <div class="button-row">
+            <button class="primary-button" type="button" data-action="make-payment">${safeText(t("make_payment"))}</button>
           </div>
         </div>
       </section>
