@@ -210,6 +210,16 @@ const I18N = {
     payment_return_success: "Stripe payment completed successfully.",
     payment_return_cancelled: "Stripe payment was cancelled before completion.",
     payment_return_pending: "Stripe returned successfully, but the payment record is still being confirmed.",
+    download_receipt: "Download receipt",
+    download_payment_history_pdf: "Download payment history PDF",
+    payment_receipt_title: "Payment Receipt",
+    payment_history_pdf_title: "Payment History",
+    receipt_payment_date: "Payment date",
+    receipt_tenant: "Tenant",
+    receipt_property: "Property",
+    receipt_status: "Status",
+    receipt_generated: "Generated",
+    pdf_unavailable: "PDF generation is not available right now.",
   },
   es: {
     welcome_brand: "CRH Condos • Coastal Rise Holdings LLC",
@@ -401,6 +411,16 @@ const I18N = {
     payment_return_success: "El pago con Stripe se completo correctamente.",
     payment_return_cancelled: "El pago con Stripe fue cancelado antes de completarse.",
     payment_return_pending: "Stripe regreso correctamente, pero el registro del pago todavia se esta confirmando.",
+    download_receipt: "Descargar recibo",
+    download_payment_history_pdf: "Descargar historial en PDF",
+    payment_receipt_title: "Recibo de Pago",
+    payment_history_pdf_title: "Historial de Pagos",
+    receipt_payment_date: "Fecha de pago",
+    receipt_tenant: "Inquilino",
+    receipt_property: "Propiedad",
+    receipt_status: "Estado",
+    receipt_generated: "Generado",
+    pdf_unavailable: "La generacion de PDF no esta disponible en este momento.",
   },
 };
 
@@ -1351,6 +1371,9 @@ function renderTenantPayments() {
             <h2 class="section-title">${safeText(t("payment_history"))}</h2>
             <p class="section-copy">${safeText(t("payment_history_copy_tenant"))}</p>
           </div>
+          ${payments.length
+            ? `<button class="ghost-button" type="button" data-action="download-payment-history">${safeText(t("download_payment_history_pdf"))}</button>`
+            : ""}
         </div>
         ${payments.length
           ? `
@@ -1363,6 +1386,7 @@ function renderTenantPayments() {
                   <th>${safeText(t("method"))}</th>
                   <th>${safeText(t("status"))}</th>
                   <th>${safeText(t("amount"))}</th>
+                  <th>${safeText(t("actions"))}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1375,6 +1399,11 @@ function renderTenantPayments() {
                     <td>${safeText(payment.method)}</td>
                     <td><span class="status-pill ${payment.status === "Paid" ? "status-paid" : "status-pending"}">${safeText(localizeStatus(payment.status))}</span></td>
                     <td>${safeText(formatCurrency(payment.amount))}</td>
+                    <td>
+                      <div class="table-action-group">
+                        <button class="ghost-button table-action-button" type="button" data-action="download-payment-receipt" data-id="${safeText(payment.id)}">${safeText(t("download_receipt"))}</button>
+                      </div>
+                    </td>
                   </tr>
                 `
                   )
@@ -1742,9 +1771,6 @@ function renderPaymentFormModal() {
               <option value="ACH via Stripe">ACH via Stripe</option>
             </select>
           </div>
-          <div class="inline-note">
-            ${safeText(t("payment_architecture_note"))}
-          </div>
           <div class="button-row">
             <button class="primary-button" type="submit">${safeText(t("record_payment"))}</button>
             <button class="ghost-button" type="button" data-action="close-modal">${safeText(t("cancel"))}</button>
@@ -1900,6 +1926,12 @@ async function handleAction(action, id) {
       setState((draft) => {
         draft.ui.modal = { type: "payment-form" };
       });
+      break;
+    case "download-payment-receipt":
+      downloadPaymentReceiptPdf(id);
+      break;
+    case "download-payment-history":
+      downloadPaymentHistoryPdf();
       break;
     case "close-modal":
       closeModal();
@@ -2242,6 +2274,130 @@ async function handlePaymentCreate(event) {
 
 function fullAddress(property) {
   return `${property.street}, ${property.city}, ${property.state} ${property.zip}, ${property.unit}`;
+}
+
+function getJsPdf() {
+  return window.jspdf?.jsPDF || null;
+}
+
+function buildPdfFileName(prefix, suffix = "") {
+  const safeSuffix = String(suffix || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${prefix}${safeSuffix ? `-${safeSuffix}` : ""}.pdf`;
+}
+
+function drawPdfRows(doc, rows, startY) {
+  let y = startY;
+  rows.forEach((row) => {
+    if (y > 265) {
+      doc.addPage();
+      y = 20;
+    }
+    doc.setFont("helvetica", "bold");
+    doc.text(row.label, 16, y);
+    doc.setFont("helvetica", "normal");
+    const lines = doc.splitTextToSize(String(row.value), 170);
+    doc.text(lines, 70, y);
+    y += Math.max(8, lines.length * 6 + 2);
+  });
+  return y;
+}
+
+function downloadPaymentReceiptPdf(paymentId) {
+  const jsPDF = getJsPdf();
+  if (!jsPDF) {
+    setFlash(t("pdf_unavailable"));
+    return;
+  }
+
+  const user = getCurrentUser();
+  const lease = getLeaseByUser(user.id);
+  const payment = state.data.payments.find((item) => item.id === paymentId && item.tenantUserId === user.id);
+  if (!payment) return;
+
+  const doc = new jsPDF();
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text(t("payment_receipt_title"), 16, 20);
+
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  doc.text("CRH Condos", 16, 28);
+
+  drawPdfRows(
+    doc,
+    [
+      { label: t("receipt_tenant"), value: `${user.firstName} ${user.lastName}` },
+      { label: t("receipt_property"), value: lease ? fullAddress(lease.property) : t("not_configured") },
+      { label: t("receipt_payment_date"), value: formatDate(payment.date) },
+      { label: t("description"), value: payment.description },
+      { label: t("method"), value: payment.method },
+      { label: t("receipt_status"), value: localizeStatus(payment.status) },
+      { label: t("amount"), value: formatCurrency(payment.amount) },
+      { label: t("receipt_generated"), value: new Date().toLocaleString(currentLanguage() === "es" ? "es-US" : "en-US") }
+    ],
+    42
+  );
+
+  doc.save(buildPdfFileName("crh-receipt", payment.date));
+}
+
+function downloadPaymentHistoryPdf() {
+  const jsPDF = getJsPdf();
+  if (!jsPDF) {
+    setFlash(t("pdf_unavailable"));
+    return;
+  }
+
+  const user = getCurrentUser();
+  const lease = getLeaseByUser(user.id);
+  const payments = state.data.payments
+    .filter((item) => item.tenantUserId === user.id)
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const doc = new jsPDF();
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(20);
+  doc.text(t("payment_history_pdf_title"), 16, 20);
+
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  doc.text("CRH Condos", 16, 28);
+
+  let y = drawPdfRows(
+    doc,
+    [
+      { label: t("receipt_tenant"), value: `${user.firstName} ${user.lastName}` },
+      { label: t("receipt_property"), value: lease ? fullAddress(lease.property) : t("not_configured") },
+      { label: t("receipt_generated"), value: new Date().toLocaleString(currentLanguage() === "es" ? "es-US" : "en-US") }
+    ],
+    40
+  );
+
+  y += 6;
+  doc.setFont("helvetica", "bold");
+  doc.text(t("payment_history"), 16, y);
+  y += 8;
+
+  payments.forEach((payment) => {
+    if (y > 255) {
+      doc.addPage();
+      y = 20;
+    }
+
+    doc.setFillColor(244, 248, 255);
+    doc.roundedRect(14, y - 5, 182, 24, 4, 4, "F");
+    doc.setFont("helvetica", "bold");
+    doc.text(`${formatDate(payment.date)} - ${formatCurrency(payment.amount)}`, 18, y + 2);
+    doc.setFont("helvetica", "normal");
+    doc.text(`${payment.description} | ${payment.method} | ${localizeStatus(payment.status)}`, 18, y + 10);
+    y += 30;
+  });
+
+  doc.save(buildPdfFileName("crh-payment-history", `${user.firstName}-${user.lastName}`));
 }
 
 function resetDemoData() {

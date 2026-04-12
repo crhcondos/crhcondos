@@ -503,6 +503,20 @@ a {
   border-bottom: 0;
 }
 
+.table-action-group {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.table-action-button {
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .status-pill {
   padding: 8px 12px;
   font-size: 0.8rem;
