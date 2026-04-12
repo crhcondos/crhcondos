@@ -207,6 +207,8 @@ const I18N = {
     ticket_marked: "Ticket marked as {status}.",
     ticket_removed: "Ticket removed.",
     payment_recorded: "Payment recorded successfully.",
+    payment_return_success: "Stripe payment completed successfully.",
+    payment_return_cancelled: "Stripe payment was cancelled before completion.",
   },
   es: {
     welcome_brand: "CRH Condos • Coastal Rise Holdings LLC",
@@ -395,6 +397,8 @@ const I18N = {
     ticket_marked: "Ticket marcado como {status}.",
     ticket_removed: "Ticket eliminado.",
     payment_recorded: "Pago registrado correctamente.",
+    payment_return_success: "El pago con Stripe se completo correctamente.",
+    payment_return_cancelled: "El pago con Stripe fue cancelado antes de completarse.",
   },
 };
 
@@ -2394,8 +2398,37 @@ async function initializeServerSession() {
       draft.ui.loginError = "";
       draft.ui.flash = "";
     });
+
+    await handlePaymentReturnRedirect();
   } catch (_error) {
     // Keep the local welcome view if the hosted session endpoint is unavailable.
+  }
+}
+
+async function handlePaymentReturnRedirect() {
+  const params = new URLSearchParams(window.location.search);
+  const paymentStatus = params.get("payment");
+  if (!paymentStatus) return;
+
+  const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+  window.history.replaceState({}, "", cleanUrl);
+
+  if (paymentStatus === "success") {
+    await refreshSessionData();
+    setState((draft) => {
+      draft.ui.modal = null;
+      draft.session.page = "payments";
+      draft.ui.flash = t("payment_return_success");
+    });
+    return;
+  }
+
+  if (paymentStatus === "cancelled") {
+    setState((draft) => {
+      draft.ui.modal = null;
+      draft.session.page = "payments";
+      draft.ui.flash = t("payment_return_cancelled");
+    });
   }
 }
 
