@@ -1078,7 +1078,12 @@ function renderAdminPayments() {
                 : ""
             }))}</p>
           </div>
-          ${leaseFilterId ? `<button class="ghost-button" type="button" data-action="clear-payment-filter">${safeText(t("show_all_payments"))}</button>` : ""}
+          <div class="button-row">
+            ${payments.length
+              ? `<button class="ghost-button" type="button" data-action="download-payment-history">${safeText(t("download_payment_history_pdf"))}</button>`
+              : ""}
+            ${leaseFilterId ? `<button class="ghost-button" type="button" data-action="clear-payment-filter">${safeText(t("show_all_payments"))}</button>` : ""}
+          </div>
         </div>
         ${payments.length
           ? `
@@ -1092,6 +1097,7 @@ function renderAdminPayments() {
                   <th>${safeText(t("description"))}</th>
                   <th>${safeText(t("method"))}</th>
                   <th>${safeText(t("amount"))}</th>
+                  <th>${safeText(t("actions"))}</th>
                 </tr>
               </thead>
               <tbody>
@@ -1116,6 +1122,11 @@ function renderPaymentRow(payment) {
       <td>${safeText(payment.description)}</td>
       <td>${safeText(payment.method)}</td>
       <td>${safeText(formatCurrency(payment.amount))}</td>
+      <td>
+        <div class="table-action-group">
+          <button class="ghost-button table-action-button" type="button" data-action="download-payment-receipt" data-id="${safeText(payment.id)}">${safeText(t("download_receipt"))}</button>
+        </div>
+      </td>
     </tr>
   `;
 }
@@ -2314,9 +2325,14 @@ function downloadPaymentReceiptPdf(paymentId) {
   }
 
   const user = getCurrentUser();
-  const lease = getLeaseByUser(user.id);
-  const payment = state.data.payments.find((item) => item.id === paymentId && item.tenantUserId === user.id);
+  const payment = state.data.payments.find((item) => item.id === paymentId);
   if (!payment) return;
+  const lease = state.data.leases.find((item) => item.id === payment.leaseId);
+  const tenant =
+    state.data.users.find((item) => item.id === payment.tenantUserId) ||
+    (lease ? { firstName: lease.principalTenant.firstName, lastName: lease.principalTenant.lastName } : null);
+
+  if (user.role !== "admin" && payment.tenantUserId !== user.id) return;
 
   const doc = new jsPDF();
   doc.setFont("helvetica", "bold");
@@ -2330,7 +2346,7 @@ function downloadPaymentReceiptPdf(paymentId) {
   drawPdfRows(
     doc,
     [
-      { label: t("receipt_tenant"), value: `${user.firstName} ${user.lastName}` },
+      { label: t("receipt_tenant"), value: tenant ? `${tenant.firstName} ${tenant.lastName}` : t("unknown_tenant") },
       { label: t("receipt_property"), value: lease ? fullAddress(lease.property) : t("not_configured") },
       { label: t("receipt_payment_date"), value: formatDate(payment.date) },
       { label: t("description"), value: payment.description },
@@ -2353,9 +2369,15 @@ function downloadPaymentHistoryPdf() {
   }
 
   const user = getCurrentUser();
-  const lease = getLeaseByUser(user.id);
-  const payments = state.data.payments
-    .filter((item) => item.tenantUserId === user.id)
+  const leaseFilterId = state.ui.paymentLeaseFilter;
+  const lease = user.role === "admin"
+    ? (leaseFilterId ? state.data.leases.find((item) => item.id === leaseFilterId) : null)
+    : getLeaseByUser(user.id);
+  const payments = (user.role === "admin"
+    ? (leaseFilterId
+        ? state.data.payments.filter((item) => item.leaseId === leaseFilterId)
+        : state.data.payments)
+    : state.data.payments.filter((item) => item.tenantUserId === user.id))
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   const doc = new jsPDF();
@@ -2369,11 +2391,16 @@ function downloadPaymentHistoryPdf() {
 
   let y = drawPdfRows(
     doc,
-    [
-      { label: t("receipt_tenant"), value: `${user.firstName} ${user.lastName}` },
-      { label: t("receipt_property"), value: lease ? fullAddress(lease.property) : t("not_configured") },
-      { label: t("receipt_generated"), value: new Date().toLocaleString(currentLanguage() === "es" ? "es-US" : "en-US") }
-    ],
+    user.role === "admin"
+      ? [
+          { label: t("receipt_property"), value: lease ? fullAddress(lease.property) : safeText(t("show_all_payments")) },
+          { label: t("receipt_generated"), value: new Date().toLocaleString(currentLanguage() === "es" ? "es-US" : "en-US") }
+        ]
+      : [
+          { label: t("receipt_tenant"), value: `${user.firstName} ${user.lastName}` },
+          { label: t("receipt_property"), value: lease ? fullAddress(lease.property) : t("not_configured") },
+          { label: t("receipt_generated"), value: new Date().toLocaleString(currentLanguage() === "es" ? "es-US" : "en-US") }
+        ],
     40
   );
 
@@ -2390,14 +2417,31 @@ function downloadPaymentHistoryPdf() {
 
     doc.setFillColor(244, 248, 255);
     doc.roundedRect(14, y - 5, 182, 24, 4, 4, "F");
+    const paymentLease = state.data.leases.find((item) => item.id === payment.leaseId);
+    const paymentTenant =
+      state.data.users.find((item) => item.id === payment.tenantUserId) ||
+      (paymentLease
+        ? { firstName: paymentLease.principalTenant.firstName, lastName: paymentLease.principalTenant.lastName }
+        : null);
     doc.setFont("helvetica", "bold");
     doc.text(`${formatDate(payment.date)} - ${formatCurrency(payment.amount)}`, 18, y + 2);
     doc.setFont("helvetica", "normal");
-    doc.text(`${payment.description} | ${payment.method} | ${localizeStatus(payment.status)}`, 18, y + 10);
+    const summary =
+      user.role === "admin"
+        ? `${paymentTenant ? `${paymentTenant.firstName} ${paymentTenant.lastName}` : t("unknown_tenant")} | ${payment.description} | ${payment.method} | ${localizeStatus(payment.status)}`
+        : `${payment.description} | ${payment.method} | ${localizeStatus(payment.status)}`;
+    doc.text(summary, 18, y + 10);
     y += 30;
   });
 
-  doc.save(buildPdfFileName("crh-payment-history", `${user.firstName}-${user.lastName}`));
+  doc.save(
+    buildPdfFileName(
+      "crh-payment-history",
+      user.role === "admin"
+        ? lease?.property?.unit || "admin"
+        : `${user.firstName}-${user.lastName}`
+    )
+  );
 }
 
 function resetDemoData() {
