@@ -1847,7 +1847,9 @@ function bindPortalEvents() {
   });
 
   document.querySelectorAll("[data-action]").forEach((button) => {
-    button.addEventListener("click", () => handleAction(button.dataset.action, button.dataset.id));
+    button.addEventListener("click", () => {
+      handleAction(button.dataset.action, button.dataset.id);
+    });
   });
 
   document.querySelectorAll("[data-close-modal='true']").forEach((overlay) => {
@@ -1860,15 +1862,10 @@ function bindPortalEvents() {
   document.getElementById("payment-form")?.addEventListener("submit", handlePaymentCreate);
 }
 
-function handleAction(action, id) {
+async function handleAction(action, id) {
   switch (action) {
     case "logout":
-      setState((draft) => {
-        draft.session = { role: null, userId: null, page: "welcome" };
-        draft.ui.modal = null;
-        draft.ui.flash = "";
-        draft.ui.paymentLeaseFilter = null;
-      });
+      await logoutSession();
       break;
     case "set-language":
       setState((draft) => {
@@ -1989,7 +1986,6 @@ async function handleTenantProfileSave(event) {
   try {
     if (window.location.protocol.startsWith("http")) {
       await postJson("/api/update-tenant-profile", {
-        userId: user.id,
         email,
         phone,
         password
@@ -2132,8 +2128,6 @@ async function handleTicketCreate(event) {
     if (window.location.protocol.startsWith("http")) {
       await postJson("/api/create-ticket", {
         id: ticketId,
-        leaseId: lease?.id ?? "",
-        tenantUserId: user.id,
         nature,
         description
       });
@@ -2223,8 +2217,6 @@ async function handlePaymentCreate(event) {
   if (state.data.stripe.mode === "live") {
     try {
       await startStripeCheckout({
-        leaseId: lease?.id ?? "",
-        tenantUserId: user.id,
         amount: Math.round(amount * 100),
         description
       });
@@ -2241,8 +2233,6 @@ async function handlePaymentCreate(event) {
     if (window.location.protocol.startsWith("http")) {
       await postJson("/api/record-payment", {
         id: paymentId,
-        leaseId: lease?.id ?? "",
-        tenantUserId: user.id,
         amount,
         description,
         method
@@ -2369,10 +2359,7 @@ async function refreshSessionData() {
   if (!window.location.protocol.startsWith("http")) return;
   if (!state.session.userId || !state.session.role) return;
 
-  const result = await postJson("/api/load-session-data", {
-    userId: state.session.userId,
-    role: state.session.role
-  });
+  const result = await postJson("/api/load-session-data", {});
 
   if (result?.data) {
     setState((draft) => {
@@ -2381,7 +2368,56 @@ async function refreshSessionData() {
   }
 }
 
+async function initializeServerSession() {
+  if (!window.location.protocol.startsWith("http")) return;
+
+  try {
+    const response = await fetch("/api/restore-session");
+    if (!response.ok) {
+      setState((draft) => {
+        draft.session = { role: null, userId: null, page: "welcome" };
+        draft.ui.modal = null;
+        draft.ui.flash = "";
+        draft.ui.paymentLeaseFilter = null;
+      });
+      return;
+    }
+
+    const result = await response.json();
+    if (!result?.user || !result?.data) return;
+
+    setState((draft) => {
+      draft.data = result.data;
+      draft.session.role = result.user.role;
+      draft.session.userId = result.user.id;
+      draft.session.page = result.user.role === "admin" ? "home" : "profile";
+      draft.ui.loginError = "";
+      draft.ui.flash = "";
+    });
+  } catch (_error) {
+    // Keep the local welcome view if the hosted session endpoint is unavailable.
+  }
+}
+
+async function logoutSession() {
+  if (window.location.protocol.startsWith("http")) {
+    try {
+      await postJson("/api/logout-session", {});
+    } catch (_error) {
+      // Clear local state even if logout endpoint fails.
+    }
+  }
+
+  setState((draft) => {
+    draft.session = { role: null, userId: null, page: "welcome" };
+    draft.ui.modal = null;
+    draft.ui.flash = "";
+    draft.ui.paymentLeaseFilter = null;
+  });
+}
+
 window.resetCRHCondosDemo = resetDemoData;
 
 renderApp();
 initializeRuntimeConfig();
+initializeServerSession();

@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { getSql } from "./_lib/db.js";
+import { requireRole } from "./_lib/session.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -7,9 +8,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { userId, email, phone, password } = req.body || {};
-  if (!userId || !email || !phone || !password) {
-    return res.status(400).json({ error: "userId, email, phone, and password are required." });
+  const session = requireRole(req, res, "tenant");
+  if (!session) return;
+
+  const { email, phone, password } = req.body || {};
+  if (!email || !phone || !password) {
+    return res.status(400).json({ error: "email, phone, and password are required." });
   }
 
   try {
@@ -23,7 +27,7 @@ export default async function handler(req, res) {
         phone = ${String(phone)},
         password_hash = ${passwordHash},
         updated_at = now()
-      where id = ${String(userId)}
+      where id = ${String(session.userId)}
         and role = 'tenant'
     `;
 

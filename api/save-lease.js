@@ -1,11 +1,15 @@
 import { getSql } from "./_lib/db.js";
 import { upsertLease } from "./_lib/lease-upsert.js";
+import { requireRole } from "./_lib/session.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
     return res.status(405).json({ error: "Method not allowed" });
   }
+
+  const session = requireRole(req, res, "admin");
+  if (!session) return;
 
   const payload = req.body || {};
   if (!payload.id || !payload.principalTenant?.email || !payload.password) {

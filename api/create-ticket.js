@@ -1,4 +1,5 @@
 import { getSql } from "./_lib/db.js";
+import { requireRole } from "./_lib/session.js";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -6,20 +7,34 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const { id, leaseId, tenantUserId, nature, description } = req.body || {};
-  if (!id || !leaseId || !tenantUserId || !nature || !description) {
-    return res.status(400).json({ error: "id, leaseId, tenantUserId, nature, and description are required." });
+  const session = requireRole(req, res, "tenant");
+  if (!session) return;
+
+  const { id, nature, description } = req.body || {};
+  if (!id || !nature || !description) {
+    return res.status(400).json({ error: "id, nature, and description are required." });
   }
 
   try {
     const sql = getSql();
+    const leases = await sql`
+      select id
+      from leases
+      where principal_tenant_user_id = ${String(session.userId)}
+      limit 1
+    `;
+
+    const leaseId = leases[0]?.id;
+    if (!leaseId) {
+      return res.status(400).json({ error: "No lease is attached to this tenant account." });
+    }
 
     await sql`
       insert into tickets (id, lease_id, tenant_user_id, nature, description, status)
       values (
         ${String(id)},
         ${String(leaseId)},
-        ${String(tenantUserId)},
+        ${String(session.userId)},
         ${String(nature)},
         ${String(description)},
         'Open'

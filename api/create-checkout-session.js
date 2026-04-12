@@ -1,4 +1,6 @@
 import Stripe from "stripe";
+import { getSql } from "./_lib/db.js";
+import { requireRole } from "./_lib/session.js";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -20,10 +22,12 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: "Missing STRIPE_SECRET_KEY." });
   }
 
-  const { leaseId, tenantUserId, amount, description } = req.body || {};
+  const userSession = requireRole(req, res, "tenant");
+  if (!userSession) return;
 
-  if (!leaseId || !tenantUserId || !amount || !description) {
-    return res.status(400).json({ error: "leaseId, tenantUserId, amount, and description are required." });
+  const { amount, description } = req.body || {};
+  if (!amount || !description) {
+    return res.status(400).json({ error: "amount and description are required." });
   }
 
   const appUrl = process.env.APP_URL;
@@ -32,14 +36,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    const session = await stripe.checkout.sessions.create({
+    const sql = getSql();
+    const leases = await sql`
+      select id
+      from leases
+      where principal_tenant_user_id = ${String(userSession.userId)}
+      limit 1
+    `;
+
+    const leaseId = leases[0]?.id;
+    if (!leaseId) {
+      return res.status(400).json({ error: "No lease is attached to this tenant account." });
+    }
+
+    const checkoutSession = await stripe.checkout.sessions.create({
       mode: "payment",
       success_url: `${appUrl}/?payment=success`,
       cancel_url: `${appUrl}/?payment=cancelled`,
       billing_address_collection: "auto",
       metadata: {
         leaseId: String(leaseId),
-        tenantUserId: String(tenantUserId),
+        tenantUserId: String(userSession.userId),
         description: String(description)
       },
       line_items: [
@@ -58,8 +75,8 @@ export default async function handler(req, res) {
     });
 
     return res.status(200).json({
-      id: session.id,
-      url: session.url
+      id: checkoutSession.id,
+      url: checkoutSession.url
     });
   } catch (error) {
     return res.status(500).json({

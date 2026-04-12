@@ -15,7 +15,7 @@ CRH Condos is a polished prototype for Coastal Rise Holdings LLC. It includes:
    - `mia@crhcondos.com` / `tenant123`
    - `julian@crhcondos.com` / `tenant123`
 
-Current limitation: app data is still stored in `localStorage`, so changes persist in the browser until cleared. This is acceptable for a prototype, not for real tenants.
+Current limitation: the app now uses Neon/Postgres for login plus the main lease, ticket, payment, and tenant-profile flows, but the frontend still keeps UI state in `localStorage`. That means the browser is no longer the source of truth for the core records, yet the session/auth model still needs more hardening before real tenant use.
 
 ## Reset demo data
 
@@ -31,6 +31,7 @@ This repo now includes:
 
 - `api/public-config.js` to expose safe runtime config from Vercel
 - `api/auth-login.js` to authenticate against Neon/Postgres
+- `api/restore-session.js` and `api/logout-session.js` for signed server-session cookies
 - `api/create-checkout-session.js` to create Stripe Checkout Sessions
 - `api/update-tenant-profile.js` to persist tenant profile edits
 - `api/create-ticket.js`, `api/update-ticket-status.js`, and `api/delete-ticket.js` for ticket writes
@@ -40,6 +41,8 @@ This repo now includes:
 - `db/schema.sql` with a starter Postgres schema
 - `db/seed.sql` with starter demo data for the database
 - `.env.example` with the environment variables needed on Vercel
+
+Add `SESSION_SECRET` in Vercel before relying on the signed session cookie in production. If it is missing, the server currently falls back to `POSTGRES_PASSWORD` so the app can still boot, but an explicit session secret is the recommended setup.
 
 ## Stripe production wiring
 
@@ -76,10 +79,9 @@ Important notes:
 
 The app is still not production-ready for real tenants until these are completed:
 
-- Real server-backed create/update/delete APIs for users, leases, payments, and tickets
-- Authorization checks so tenants can only access their own lease data
+- Hardened session storage and authorization beyond the current signed-cookie flow
 - Webhook persistence so Stripe payments are recorded in the database
-- Admin and tenant edit flows moved from browser state to authenticated APIs
+- Admin and tenant edit flows fully removed from browser-managed state
 
 ## Files
 
