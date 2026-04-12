@@ -31,7 +31,7 @@ This repo now includes:
 
 - `api/public-config.js` to expose safe runtime config from Vercel
 - `api/auth-login.js` to authenticate against Neon/Postgres
-- `api/restore-session.js` and `api/logout-session.js` for signed server-session cookies
+- `api/session.js` for signed server-session restore, refresh, and logout
 - `api/create-checkout-session.js` to create Stripe Checkout Sessions
 - `api/update-tenant-profile.js` to persist tenant profile edits
 - `api/create-ticket.js`, `api/update-ticket-status.js`, and `api/delete-ticket.js` for ticket writes

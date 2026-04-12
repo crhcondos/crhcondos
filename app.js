@@ -2359,7 +2359,7 @@ async function refreshSessionData() {
   if (!window.location.protocol.startsWith("http")) return;
   if (!state.session.userId || !state.session.role) return;
 
-  const result = await postJson("/api/load-session-data", {});
+  const result = await postJson("/api/session", { action: "load" });
 
   if (result?.data) {
     setState((draft) => {
@@ -2372,7 +2372,7 @@ async function initializeServerSession() {
   if (!window.location.protocol.startsWith("http")) return;
 
   try {
-    const response = await fetch("/api/restore-session");
+    const response = await fetch("/api/session");
     if (!response.ok) {
       setState((draft) => {
         draft.session = { role: null, userId: null, page: "welcome" };
@@ -2402,7 +2402,7 @@ async function initializeServerSession() {
 async function logoutSession() {
   if (window.location.protocol.startsWith("http")) {
     try {
-      await postJson("/api/logout-session", {});
+      await postJson("/api/session", { action: "logout" });
     } catch (_error) {
       // Clear local state even if logout endpoint fails.
     }
