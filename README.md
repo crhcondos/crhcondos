@@ -32,6 +32,9 @@ This repo now includes:
 - `api/public-config.js` to expose safe runtime config from Vercel
 - `api/auth-login.js` to authenticate against Neon/Postgres
 - `api/create-checkout-session.js` to create Stripe Checkout Sessions
+- `api/update-tenant-profile.js` to persist tenant profile edits
+- `api/create-ticket.js`, `api/update-ticket-status.js`, and `api/delete-ticket.js` for ticket writes
+- `api/record-payment.js` to persist demo-mode payment records in Postgres
 - `api/stripe-webhook.js` to verify Stripe webhook signatures
 - `db/schema.sql` with a starter Postgres schema
 - `db/seed.sql` with starter demo data for the database

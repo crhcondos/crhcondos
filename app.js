@@ -1977,17 +1977,35 @@ function closeModal() {
   });
 }
 
-function handleTenantProfileSave(event) {
+async function handleTenantProfileSave(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const user = getCurrentUser();
 
+  const email = String(form.get("email") || "").trim();
+  const phone = String(form.get("phone") || "").trim();
+  const password = String(form.get("password") || "").trim();
+
+  try {
+    if (window.location.protocol.startsWith("http")) {
+      await postJson("/api/update-tenant-profile", {
+        userId: user.id,
+        email,
+        phone,
+        password
+      });
+    }
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("profile_updated"));
+    return;
+  }
+
   setState((draft) => {
     const currentUser = draft.data.users.find((item) => item.id === user.id);
     const lease = draft.data.leases.find((item) => item.principalTenantUserId === user.id);
-    currentUser.email = String(form.get("email") || "").trim();
-    currentUser.phone = String(form.get("phone") || "").trim();
-    currentUser.password = String(form.get("password") || "").trim();
+    currentUser.email = email;
+    currentUser.phone = phone;
+    currentUser.password = password;
 
     if (lease) {
       lease.principalTenant.email = currentUser.email;
@@ -2120,19 +2138,37 @@ function deleteLease(leaseId) {
   });
 }
 
-function handleTicketCreate(event) {
+async function handleTicketCreate(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const user = getCurrentUser();
   const lease = getLeaseByUser(user.id);
+  const ticketId = uid("ticket");
+  const nature = String(form.get("nature") || "");
+  const description = String(form.get("description") || "").trim();
+
+  try {
+    if (window.location.protocol.startsWith("http")) {
+      await postJson("/api/create-ticket", {
+        id: ticketId,
+        leaseId: lease?.id ?? "",
+        tenantUserId: user.id,
+        nature,
+        description
+      });
+    }
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("ticket_submitted"));
+    return;
+  }
 
   setState((draft) => {
     draft.data.tickets.unshift({
-      id: uid("ticket"),
+      id: ticketId,
       leaseId: lease?.id ?? null,
       tenantUserId: user.id,
-      nature: String(form.get("nature") || ""),
-      description: String(form.get("description") || "").trim(),
+      nature,
+      description,
       status: "Open",
       createdAt: new Date().toISOString().slice(0, 10),
     });
@@ -2141,18 +2177,43 @@ function handleTicketCreate(event) {
   });
 }
 
-function toggleTicketStatus(ticketId) {
+async function toggleTicketStatus(ticketId) {
+  const currentTicket = state.data.tickets.find((item) => item.id === ticketId);
+  if (!currentTicket) return;
+  const nextStatus = currentTicket.status === "Open" ? "Closed" : "Open";
+
+  try {
+    if (window.location.protocol.startsWith("http")) {
+      await postJson("/api/update-ticket-status", {
+        ticketId,
+        status: nextStatus
+      });
+    }
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("ticket_marked", { status: nextStatus }));
+    return;
+  }
+
   setState((draft) => {
     const ticket = draft.data.tickets.find((item) => item.id === ticketId);
     if (!ticket) return;
-    ticket.status = ticket.status === "Open" ? "Closed" : "Open";
+    ticket.status = nextStatus;
     draft.ui.flash = t("ticket_marked", {
       status: ticket.status === "Open" ? t("open_status") : t("closed_status")
     });
   });
 }
 
-function deleteTicket(ticketId) {
+async function deleteTicket(ticketId) {
+  try {
+    if (window.location.protocol.startsWith("http")) {
+      await postJson("/api/delete-ticket", { ticketId });
+    }
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("ticket_removed"));
+    return;
+  }
+
   setState((draft) => {
     draft.data.tickets = draft.data.tickets.filter((item) => item.id !== ticketId);
     draft.ui.modal = null;
@@ -2185,9 +2246,27 @@ async function handlePaymentCreate(event) {
     }
   }
 
+  const paymentId = uid("pay");
+
+  try {
+    if (window.location.protocol.startsWith("http")) {
+      await postJson("/api/record-payment", {
+        id: paymentId,
+        leaseId: lease?.id ?? "",
+        tenantUserId: user.id,
+        amount,
+        description,
+        method
+      });
+    }
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("payment_recorded"));
+    return;
+  }
+
   setState((draft) => {
     draft.data.payments.unshift({
-      id: uid("pay"),
+      id: paymentId,
       leaseId: lease?.id ?? null,
       tenantUserId: user.id,
       date: new Date().toISOString().slice(0, 10),
@@ -2274,6 +2353,23 @@ async function tryServerLogin({ email, password, role }) {
     if (error instanceof Error) throw error;
     throw new Error(t("login_error"));
   }
+}
+
+async function postJson(url, payload) {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(result.error || "Request failed.");
+  }
+
+  return result;
 }
 
 window.resetCRHCondosDemo = resetDemoData;
