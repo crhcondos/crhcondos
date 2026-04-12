@@ -2175,6 +2175,10 @@ async function handleTicketCreate(event) {
     draft.ui.modal = null;
     draft.ui.flash = t("ticket_submitted");
   });
+
+  if (state.session.role === "tenant") {
+    await refreshSessionData();
+  }
 }
 
 async function toggleTicketStatus(ticketId) {
@@ -2202,6 +2206,8 @@ async function toggleTicketStatus(ticketId) {
       status: ticket.status === "Open" ? t("open_status") : t("closed_status")
     });
   });
+
+  await refreshSessionData();
 }
 
 async function deleteTicket(ticketId) {
@@ -2219,6 +2225,8 @@ async function deleteTicket(ticketId) {
     draft.ui.modal = null;
     draft.ui.flash = t("ticket_removed");
   });
+
+  await refreshSessionData();
 }
 
 async function handlePaymentCreate(event) {
@@ -2279,6 +2287,10 @@ async function handlePaymentCreate(event) {
     draft.ui.flash = t("payment_recorded");
     draft.session.page = "payments";
   });
+
+  if (state.session.role === "tenant") {
+    await refreshSessionData();
+  }
 }
 
 function fullAddress(property) {
@@ -2370,6 +2382,22 @@ async function postJson(url, payload) {
   }
 
   return result;
+}
+
+async function refreshSessionData() {
+  if (!window.location.protocol.startsWith("http")) return;
+  if (!state.session.userId || !state.session.role) return;
+
+  const result = await postJson("/api/load-session-data", {
+    userId: state.session.userId,
+    role: state.session.role
+  });
+
+  if (result?.data) {
+    setState((draft) => {
+      draft.data = result.data;
+    });
+  }
 }
 
 window.resetCRHCondosDemo = resetDemoData;
