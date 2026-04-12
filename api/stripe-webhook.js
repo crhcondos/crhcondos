@@ -1,4 +1,5 @@
 import Stripe from "stripe";
+import { getSql } from "./_lib/db.js";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -22,6 +23,63 @@ export const config = {
   }
 };
 
+async function upsertCheckoutPayment(sql, session, statusOverride) {
+  const leaseId = String(session.metadata?.leaseId || "").trim();
+  const tenantUserId = String(session.metadata?.tenantUserId || "").trim();
+  const description = String(session.metadata?.description || "Rent payment").trim();
+
+  if (!session.id || !leaseId || !tenantUserId) {
+    throw new Error("Missing required checkout session metadata.");
+  }
+
+  const leaseRows = await sql`
+    select id
+    from leases
+    where id = ${leaseId}
+      and principal_tenant_user_id = ${tenantUserId}
+    limit 1
+  `;
+
+  if (!leaseRows.length) {
+    throw new Error("The Stripe payment does not match a valid tenant lease.");
+  }
+
+  const paymentStatus =
+    statusOverride || (session.payment_status === "paid" ? "Paid" : "Pending");
+
+  await sql`
+    insert into payments (
+      id,
+      lease_id,
+      tenant_user_id,
+      stripe_checkout_session_id,
+      amount_cents,
+      description,
+      method,
+      status,
+      paid_at
+    )
+    values (
+      ${`pay_${session.id}`},
+      ${leaseId},
+      ${tenantUserId},
+      ${String(session.id)},
+      ${Number(session.amount_total || 0)},
+      ${description},
+      ${"Card via Stripe Checkout"},
+      ${paymentStatus},
+      ${paymentStatus === "Paid" ? new Date().toISOString() : null}
+    )
+    on conflict (stripe_checkout_session_id) do update
+    set
+      amount_cents = excluded.amount_cents,
+      description = excluded.description,
+      method = excluded.method,
+      status = excluded.status,
+      paid_at = excluded.paid_at
+  `;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     res.setHeader("Allow", "POST");
@@ -37,6 +95,7 @@ export default async function handler(req, res) {
   }
 
   try {
+    const sql = getSql();
     const rawBody = await readRawBody(req);
     const signature = req.headers["stripe-signature"];
 
@@ -48,15 +107,12 @@ export default async function handler(req, res) {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
+      await upsertCheckoutPayment(sql, session);
+    }
 
-      // TODO: Replace this with database writes.
-      // Persist a payment row and tie it to the lease/tenant IDs in metadata.
-      console.log("checkout.session.completed", {
-        sessionId: session.id,
-        leaseId: session.metadata?.leaseId,
-        tenantUserId: session.metadata?.tenantUserId,
-        amountTotal: session.amount_total
-      });
+    if (event.type === "checkout.session.async_payment_succeeded") {
+      const session = event.data.object;
+      await upsertCheckoutPayment(sql, session, "Paid");
     }
 
     return res.status(200).json({ received: true });

@@ -54,8 +54,8 @@ The tenant payment screen currently runs in demo mode and records a local paymen
 2. Set `STRIPE_MODE=live`
 3. Add your live Stripe keys
 4. Configure a Stripe webhook to call `/api/stripe-webhook`
-5. Replace the webhook `TODO` with database writes
-6. Replace browser `localStorage` login/data with authenticated server APIs and Postgres
+5. Enable at least `checkout.session.completed` and `checkout.session.async_payment_succeeded`
+6. Replace the remaining browser-managed state with fully authenticated server APIs
 
 Recommended payload shape:
 
@@ -80,7 +80,6 @@ Important notes:
 The app is still not production-ready for real tenants until these are completed:
 
 - Hardened session storage and authorization beyond the current signed-cookie flow
-- Webhook persistence so Stripe payments are recorded in the database
 - Admin and tenant edit flows fully removed from browser-managed state
 
 ## Files
