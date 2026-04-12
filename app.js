@@ -623,6 +623,12 @@ function setState(updater) {
   renderApp();
 }
 
+function setFlash(message) {
+  setState((draft) => {
+    draft.ui.flash = message;
+  });
+}
+
 function getCurrentUser() {
   return state.data.users.find((user) => user.id === state.session.userId) ?? null;
 }
@@ -2134,7 +2140,7 @@ function deleteTicket(ticketId) {
   });
 }
 
-function handlePaymentCreate(event) {
+async function handlePaymentCreate(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const user = getCurrentUser();
@@ -2145,7 +2151,18 @@ function handlePaymentCreate(event) {
   const method = String(form.get("method") || "Card via Stripe");
 
   if (state.data.stripe.mode === "live") {
-    console.info("Live Stripe mode should redirect to Checkout Sessions here.");
+    try {
+      await startStripeCheckout({
+        leaseId: lease?.id ?? "",
+        tenantUserId: user.id,
+        amount: Math.round(amount * 100),
+        description
+      });
+      return;
+    } catch (error) {
+      setFlash(error instanceof Error ? error.message : "Unable to start Stripe Checkout.");
+      return;
+    }
   }
 
   setState((draft) => {
@@ -2177,6 +2194,45 @@ function resetDemoData() {
   renderApp();
 }
 
+async function initializeRuntimeConfig() {
+  if (!window.location.protocol.startsWith("http")) return;
+
+  try {
+    const response = await fetch("/api/public-config");
+    if (!response.ok) return;
+
+    const runtimeConfig = await response.json();
+    if (!runtimeConfig?.stripe) return;
+
+    setState((draft) => {
+      draft.data.stripe = {
+        ...draft.data.stripe,
+        ...runtimeConfig.stripe
+      };
+    });
+  } catch (_error) {
+    // Ignore missing runtime config so local file previews still work.
+  }
+}
+
+async function startStripeCheckout(payload) {
+  const response = await fetch(state.data.stripe.checkoutEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+  });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok || !result.url) {
+    throw new Error(result.error || "Unable to start Stripe Checkout.");
+  }
+
+  window.location.href = result.url;
+}
+
 window.resetCRHCondosDemo = resetDemoData;
 
 renderApp();
+initializeRuntimeConfig();
