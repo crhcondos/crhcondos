@@ -209,6 +209,7 @@ const I18N = {
     payment_recorded: "Payment recorded successfully.",
     payment_return_success: "Stripe payment completed successfully.",
     payment_return_cancelled: "Stripe payment was cancelled before completion.",
+    payment_return_pending: "Stripe returned successfully, but the payment record is still being confirmed.",
   },
   es: {
     welcome_brand: "CRH Condos • Coastal Rise Holdings LLC",
@@ -399,6 +400,7 @@ const I18N = {
     payment_recorded: "Pago registrado correctamente.",
     payment_return_success: "El pago con Stripe se completo correctamente.",
     payment_return_cancelled: "El pago con Stripe fue cancelado antes de completarse.",
+    payment_return_pending: "Stripe regreso correctamente, pero el registro del pago todavia se esta confirmando.",
   },
 };
 
@@ -2408,18 +2410,37 @@ async function initializeServerSession() {
 async function handlePaymentReturnRedirect() {
   const params = new URLSearchParams(window.location.search);
   const paymentStatus = params.get("payment");
+  const checkoutSessionId = params.get("session_id");
   if (!paymentStatus) return;
 
-  const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
-  window.history.replaceState({}, "", cleanUrl);
-
   if (paymentStatus === "success") {
+    try {
+      if (checkoutSessionId) {
+        await postJson("/api/session", {
+          action: "confirm-payment",
+          sessionId: checkoutSessionId
+        });
+      }
+    } catch (_error) {
+      await refreshSessionData();
+      setState((draft) => {
+        draft.ui.modal = null;
+        draft.session.page = "payments";
+        draft.ui.flash = t("payment_return_pending");
+      });
+      const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+      window.history.replaceState({}, "", cleanUrl);
+      return;
+    }
+
     await refreshSessionData();
     setState((draft) => {
       draft.ui.modal = null;
       draft.session.page = "payments";
       draft.ui.flash = t("payment_return_success");
     });
+    const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, "", cleanUrl);
     return;
   }
 
@@ -2429,6 +2450,8 @@ async function handlePaymentReturnRedirect() {
       draft.session.page = "payments";
       draft.ui.flash = t("payment_return_cancelled");
     });
+    const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, "", cleanUrl);
   }
 }
 
