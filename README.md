@@ -35,6 +35,7 @@ This repo now includes:
 - `api/update-tenant-profile.js` to persist tenant profile edits
 - `api/create-ticket.js`, `api/update-ticket-status.js`, and `api/delete-ticket.js` for ticket writes
 - `api/record-payment.js` to persist demo-mode payment records in Postgres
+- `api/save-lease.js` and `api/delete-lease.js` for admin lease CRUD writes
 - `api/stripe-webhook.js` to verify Stripe webhook signatures
 - `db/schema.sql` with a starter Postgres schema
 - `db/seed.sql` with starter demo data for the database

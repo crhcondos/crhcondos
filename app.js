@@ -2016,7 +2016,7 @@ async function handleTenantProfileSave(event) {
   });
 }
 
-function handleLeaseSave(event) {
+async function handleLeaseSave(event) {
   event.preventDefault();
   const form = new FormData(event.currentTarget);
   const leaseId = String(form.get("leaseId") || "").trim();
@@ -2063,76 +2063,57 @@ function handleLeaseSave(event) {
     },
   };
 
-  setState((draft) => {
-    const existingLease = draft.data.leases.find((item) => item.id === leaseId);
-    let tenantUser = draft.data.users.find(
-      (item) =>
-        item.role === "tenant" &&
-        ((existingLease && item.id === existingLease.principalTenantUserId) ||
-          item.email.toLowerCase() === leasePayload.principalTenant.email.toLowerCase())
-    );
+  const existingLease = state.data.leases.find((item) => item.id === leaseId);
+  const existingTenantUser = state.data.users.find(
+    (item) =>
+      item.role === "tenant" &&
+      ((existingLease && item.id === existingLease.principalTenantUserId) ||
+        item.email.toLowerCase() === leasePayload.principalTenant.email.toLowerCase())
+  );
 
-    if (!tenantUser) {
-      tenantUser = {
-        id: uid("user"),
-        role: "tenant",
-        firstName: leasePayload.principalTenant.firstName,
-        lastName: leasePayload.principalTenant.lastName,
-        phone: leasePayload.principalTenant.phone,
-        email: leasePayload.principalTenant.email,
+  const finalLeaseId = leaseId || uid("lease");
+  const finalTenantUserId = existingTenantUser?.id || uid("user");
+
+  try {
+    if (window.location.protocol.startsWith("http")) {
+      await postJson("/api/save-lease", {
+        id: finalLeaseId,
+        tenantUserId: finalTenantUserId,
+        principalTenantUserId: existingLease?.principalTenantUserId || existingTenantUser?.id || finalTenantUserId,
+        principalTenant: leasePayload.principalTenant,
         password: leasePayload.password,
-        leaseId: leaseId || uid("lease"),
-      };
-      draft.data.users.push(tenantUser);
-    } else {
-      tenantUser.firstName = leasePayload.principalTenant.firstName;
-      tenantUser.lastName = leasePayload.principalTenant.lastName;
-      tenantUser.phone = leasePayload.principalTenant.phone;
-      tenantUser.email = leasePayload.principalTenant.email;
-      tenantUser.password = leasePayload.password;
-    }
-
-    const finalLeaseId = leaseId || tenantUser.leaseId || uid("lease");
-    tenantUser.leaseId = finalLeaseId;
-
-    const leaseRecord = {
-      id: finalLeaseId,
-      principalTenantUserId: tenantUser.id,
-      principalTenant: leasePayload.principalTenant,
-      derivatives: leasePayload.derivatives,
-      property: leasePayload.property,
-      terms: leasePayload.terms,
-    };
-
-    if (existingLease) {
-      const index = draft.data.leases.findIndex((item) => item.id === existingLease.id);
-      draft.data.leases[index] = leaseRecord;
-      draft.data.payments.forEach((payment) => {
-        if (payment.leaseId === existingLease.id) payment.tenantUserId = tenantUser.id;
+        derivatives: leasePayload.derivatives,
+        property: leasePayload.property,
+        terms: leasePayload.terms
       });
-      draft.data.tickets.forEach((ticket) => {
-        if (ticket.leaseId === existingLease.id) ticket.tenantUserId = tenantUser.id;
-      });
-      draft.ui.flash = t("lease_updated");
-    } else {
-      draft.data.leases.unshift(leaseRecord);
-      draft.ui.flash = t("lease_created");
     }
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("lease_updated"));
+    return;
+  }
 
+  await refreshSessionData();
+
+  setState((draft) => {
     draft.ui.modal = null;
     draft.session.page = "leases";
+    draft.ui.flash = existingLease ? t("lease_updated") : t("lease_created");
   });
 }
 
-function deleteLease(leaseId) {
-  setState((draft) => {
-    const lease = draft.data.leases.find((item) => item.id === leaseId);
-    draft.data.leases = draft.data.leases.filter((item) => item.id !== leaseId);
-    draft.data.payments = draft.data.payments.filter((item) => item.leaseId !== leaseId);
-    draft.data.tickets = draft.data.tickets.filter((item) => item.leaseId !== leaseId);
-    if (lease?.principalTenantUserId) {
-      draft.data.users = draft.data.users.filter((item) => item.id !== lease.principalTenantUserId);
+async function deleteLease(leaseId) {
+  try {
+    if (window.location.protocol.startsWith("http")) {
+      await postJson("/api/delete-lease", { leaseId });
     }
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("lease_removed"));
+    return;
+  }
+
+  await refreshSessionData();
+
+  setState((draft) => {
     draft.ui.modal = null;
     draft.ui.flash = t("lease_removed");
   });
