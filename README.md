@@ -30,9 +30,11 @@ resetCRHCondosDemo();
 This repo now includes:
 
 - `api/public-config.js` to expose safe runtime config from Vercel
+- `api/auth-login.js` to authenticate against Neon/Postgres
 - `api/create-checkout-session.js` to create Stripe Checkout Sessions
 - `api/stripe-webhook.js` to verify Stripe webhook signatures
 - `db/schema.sql` with a starter Postgres schema
+- `db/seed.sql` with starter demo data for the database
 - `.env.example` with the environment variables needed on Vercel
 
 ## Stripe production wiring
@@ -70,11 +72,10 @@ Important notes:
 
 The app is still not production-ready for real tenants until these are completed:
 
-- Server-side authentication and password hashing
-- Real Postgres persistence for users, leases, payments, and tickets
+- Real server-backed create/update/delete APIs for users, leases, payments, and tickets
 - Authorization checks so tenants can only access their own lease data
 - Webhook persistence so Stripe payments are recorded in the database
-- Admin tooling moved from browser state to authenticated APIs
+- Admin and tenant edit flows moved from browser state to authenticated APIs
 
 ## Files
 

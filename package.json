@@ -7,6 +7,8 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.0.1",
+    "bcryptjs": "^3.0.2",
     "stripe": "^18.5.0"
   }
 }

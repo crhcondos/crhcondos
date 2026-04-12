@@ -1789,12 +1789,32 @@ function bindWelcomeEvents() {
     });
   });
 
-  document.getElementById("login-form")?.addEventListener("submit", (event) => {
+  document.getElementById("login-form")?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const email = String(form.get("email") || "").trim().toLowerCase();
     const password = String(form.get("password") || "");
     const role = state.ui.authRole;
+
+    try {
+      const serverResult = await tryServerLogin({ email, password, role });
+      if (serverResult?.user && serverResult?.data) {
+        setState((draft) => {
+          draft.data = serverResult.data;
+          draft.session.role = serverResult.user.role;
+          draft.session.userId = serverResult.user.id;
+          draft.session.page = serverResult.user.role === "admin" ? "home" : "profile";
+          draft.ui.loginError = "";
+          draft.ui.flash = "";
+        });
+        return;
+      }
+    } catch (error) {
+      setState((draft) => {
+        draft.ui.loginError = error instanceof Error ? error.message : t("login_error");
+      });
+      return;
+    }
 
     const user = state.data.users.find(
       (entry) => entry.role === role && entry.email.toLowerCase() === email && entry.password === password
@@ -2230,6 +2250,30 @@ async function startStripeCheckout(payload) {
   }
 
   window.location.href = result.url;
+}
+
+async function tryServerLogin({ email, password, role }) {
+  if (!window.location.protocol.startsWith("http")) return null;
+
+  try {
+    const response = await fetch("/api/auth-login", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ email, password, role })
+    });
+
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}));
+      throw new Error(result.error || t("login_error"));
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error instanceof Error) throw error;
+    throw new Error(t("login_error"));
+  }
 }
 
 window.resetCRHCondosDemo = resetDemoData;
