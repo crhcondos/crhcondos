@@ -11,6 +11,7 @@ const defaultState = {
     language: "es",
     loginError: "",
     flash: "",
+    modalError: "",
     modal: null,
     paymentLeaseFilter: null,
   },
@@ -734,6 +735,12 @@ function setState(updater) {
 function setFlash(message) {
   setState((draft) => {
     draft.ui.flash = message;
+  });
+}
+
+function setModalError(message) {
+  setState((draft) => {
+    draft.ui.modalError = message;
   });
 }
 
@@ -2115,6 +2122,10 @@ function renderAutopayFormModal() {
   const lease = getLeaseByUser(user.id);
   const today = new Date().toISOString().slice(0, 10);
   const defaultStartDate = lease?.terms?.startDate && lease.terms.startDate > today ? lease.terms.startDate : today;
+  const selectedStopMode = state.ui.modal?.stopMode || "lease_end";
+  const modalError = state.ui.modalError
+    ? `<div class="error-banner">${safeText(state.ui.modalError)}</div>`
+    : "";
 
   return `
     <div class="modal-overlay" data-close-modal="true">
@@ -2126,6 +2137,7 @@ function renderAutopayFormModal() {
           </div>
           <button class="ghost-button" type="button" data-action="close-modal">${safeText(t("close"))}</button>
         </div>
+        ${modalError}
         <form id="autopay-form" class="form-grid">
           <div class="field">
             <label>${safeText(t("amount"))}</label>
@@ -2142,13 +2154,13 @@ function renderAutopayFormModal() {
           <div class="field">
             <label>${safeText(t("stop_autopay_on"))}</label>
             <select name="stopMode" required>
-              <option value="lease_end">${safeText(t("lease_end_autopay"))}</option>
-              <option value="specific_date">${safeText(t("specific_date"))}</option>
+              <option value="lease_end" ${selectedStopMode === "lease_end" ? "selected" : ""}>${safeText(t("lease_end_autopay"))}</option>
+              <option value="specific_date" ${selectedStopMode === "specific_date" ? "selected" : ""}>${safeText(t("specific_date"))}</option>
             </select>
           </div>
           <div class="field">
             <label>${safeText(t("stop_date"))}</label>
-            <input name="stopDate" type="date" value="${safeText(lease?.terms?.endDate || "")}" max="${safeText(lease?.terms?.endDate || "")}">
+            <input name="stopDate" type="date" value="${safeText(lease?.terms?.endDate || "")}" max="${safeText(lease?.terms?.endDate || "")}" ${selectedStopMode === "lease_end" ? "disabled" : ""}>
           </div>
           <div class="button-row">
             <button class="primary-button" type="submit">${safeText(t("activate_autopay"))}</button>
@@ -2243,6 +2255,7 @@ function bindPortalEvents() {
   document.getElementById("ticket-form")?.addEventListener("submit", handleTicketCreate);
   document.getElementById("payment-form")?.addEventListener("submit", handlePaymentCreate);
   document.getElementById("autopay-form")?.addEventListener("submit", handleAutopayCreate);
+  document.querySelector('#autopay-form select[name="stopMode"]')?.addEventListener("change", handleAutopayStopModeChange);
 }
 
 async function handleAction(action, id) {
@@ -2313,7 +2326,8 @@ async function handleAction(action, id) {
       break;
     case "open-setup-autopay":
       setState((draft) => {
-        draft.ui.modal = { type: "autopay-form" };
+        draft.ui.modal = { type: "autopay-form", stopMode: "lease_end" };
+        draft.ui.modalError = "";
       });
       break;
     case "cancel-autopay":
@@ -2377,6 +2391,7 @@ function openConfirm(title, message, onConfirm) {
 function closeModal() {
   setState((draft) => {
     draft.ui.modal = null;
+    draft.ui.modalError = "";
   });
 }
 
@@ -2697,6 +2712,7 @@ async function handlePaymentCreate(event) {
 
 async function handleAutopayCreate(event) {
   event.preventDefault();
+  setModalError("");
   const form = new FormData(event.currentTarget);
   const amount = Number(form.get("amount") || 0);
   const description = String(form.get("description") || "").trim();
@@ -2713,8 +2729,21 @@ async function handleAutopayCreate(event) {
       stopDate
     });
   } catch (error) {
-    setFlash(error instanceof Error ? error.message : t("autopay_scheduled"));
+    setModalError(error instanceof Error ? error.message : t("autopay_scheduled"));
   }
+}
+
+function handleAutopayStopModeChange(event) {
+  const stopMode = String(event.currentTarget.value || "lease_end");
+  setState((draft) => {
+    if (draft.ui.modal?.type === "autopay-form") {
+      draft.ui.modal = {
+        ...draft.ui.modal,
+        stopMode
+      };
+      draft.ui.modalError = "";
+    }
+  });
 }
 
 async function cancelAutopay(autopayId) {
