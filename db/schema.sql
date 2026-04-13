@@ -66,8 +66,18 @@ create table tickets (
   updated_at timestamptz not null default now()
 );
 
+create table lease_documents (
+  id text primary key,
+  lease_id text not null references leases(id) on delete cascade,
+  file_name text not null,
+  mime_type text not null default 'application/pdf',
+  content_base64 text not null,
+  created_at timestamptz not null default now()
+);
+
 create index idx_leases_principal_tenant_user_id on leases(principal_tenant_user_id);
 create index idx_payments_lease_id on payments(lease_id);
 create index idx_payments_tenant_user_id on payments(tenant_user_id);
 create index idx_tickets_lease_id on tickets(lease_id);
 create index idx_tickets_tenant_user_id on tickets(tenant_user_id);
+create index idx_lease_documents_lease_id on lease_documents(lease_id);

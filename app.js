@@ -212,6 +212,18 @@ const I18N = {
     payment_return_pending: "Stripe returned successfully, but the payment record is still being confirmed.",
     download_receipt: "Download receipt",
     download_payment_history_pdf: "Download payment history PDF",
+    docs: "Docs",
+    lease_documents: "Lease Documents",
+    no_lease_documents: "No PDF documents have been uploaded for this lease yet.",
+    upload_pdf_documents: "Upload PDF documents",
+    upload_selected_pdfs: "Upload selected PDFs",
+    open_document: "Open",
+    document_name: "Document",
+    uploaded_on: "Uploaded on",
+    pdf_only_error: "Only PDF files can be uploaded.",
+    document_uploaded: "Document uploaded successfully.",
+    documents_uploaded: "Documents uploaded successfully.",
+    select_pdf_files: "Select one or more PDF files",
     payment_receipt_title: "Payment Receipt",
     payment_history_pdf_title: "Payment History",
     receipt_payment_date: "Payment date",
@@ -413,6 +425,18 @@ const I18N = {
     payment_return_pending: "Stripe regreso correctamente, pero el registro del pago todavia se esta confirmando.",
     download_receipt: "Descargar recibo",
     download_payment_history_pdf: "Descargar historial en PDF",
+    docs: "Docs",
+    lease_documents: "Documentos del Contrato",
+    no_lease_documents: "Todavia no se han subido documentos PDF para este contrato.",
+    upload_pdf_documents: "Subir documentos PDF",
+    upload_selected_pdfs: "Subir PDFs seleccionados",
+    open_document: "Abrir",
+    document_name: "Documento",
+    uploaded_on: "Subido el",
+    pdf_only_error: "Solo se pueden subir archivos PDF.",
+    document_uploaded: "Documento subido correctamente.",
+    documents_uploaded: "Documentos subidos correctamente.",
+    select_pdf_files: "Selecciona uno o varios archivos PDF",
     payment_receipt_title: "Recibo de Pago",
     payment_history_pdf_title: "Historial de Pagos",
     receipt_payment_date: "Fecha de pago",
@@ -829,9 +853,6 @@ function renderPortal() {
           </div>
           <div class="topbar-actions">
             ${renderLanguageSwitch()}
-            ${user.role === "admin"
-              ? `<button class="primary-button" type="button" data-action="open-create-lease">${safeText(t("create_lease"))}</button>`
-              : `<button class="primary-button" type="button" data-action="open-ticket-create">${safeText(t("create_ticket_plus"))}</button>`}
           </div>
         </section>
         ${flash}
@@ -1047,6 +1068,7 @@ function renderLeaseTableRow(lease) {
       <td>
         <div class="action-group">
           <button class="action-button" type="button" data-action="lease-payments" data-id="${lease.id}">${safeText(t("payment_history"))}</button>
+          <button class="action-button" type="button" data-action="lease-docs" data-id="${lease.id}">${safeText(t("docs"))}</button>
           <button class="action-button" type="button" data-action="edit-lease" data-id="${lease.id}">${safeText(t("edit"))}</button>
           <button class="action-button danger" type="button" data-action="delete-lease" data-id="${lease.id}">${safeText(t("delete"))}</button>
         </div>
@@ -1280,7 +1302,6 @@ function renderTenantLease() {
           <div class="panel-header">
             <div>
               <h2 class="section-title">${safeText(t("lease_overview"))}</h2>
-              <p class="section-copy">${safeText(t("lease_overview_copy"))}</p>
             </div>
           </div>
           <div class="detail-list">
@@ -1365,7 +1386,6 @@ function renderTenantPayments() {
         <div class="panel-header">
           <div>
             <h2 class="section-title">${safeText(t("make_payment"))}</h2>
-            <p class="section-copy">${safeText(t("make_payment_copy"))}</p>
           </div>
         </div>
         <div class="payment-card">
@@ -1483,6 +1503,7 @@ function renderModal() {
   if (!modal) return "";
 
   if (modal.type === "lease-form") return renderLeaseFormModal(modal.leaseId);
+  if (modal.type === "lease-docs") return renderLeaseDocsModal(modal);
   if (modal.type === "confirm") return renderConfirmModal(modal);
   if (modal.type === "ticket-view") return renderTicketViewModal(modal.ticketId);
   if (modal.type === "ticket-form") return renderTicketFormModal();
@@ -1625,11 +1646,78 @@ function renderLeaseFormModal(leaseId) {
             <div id="other-payment-list" class="stack">
               ${otherPayments.map(renderOtherPaymentInputs).join("")}
             </div>
+            <div class="section-divider"></div>
+            <div class="field">
+              <label>${safeText(t("upload_pdf_documents"))}</label>
+              <input id="lease-document-input" name="leaseDocuments" type="file" accept="application/pdf" multiple>
+              <span class="muted">${safeText(t("select_pdf_files"))}</span>
+            </div>
           </section>
 
           <div class="button-row">
             <button class="primary-button" type="submit">${lease ? safeText(t("save_changes")) : safeText(t("create_lease_button"))}</button>
             <button class="ghost-button" type="button" data-action="close-modal">${safeText(t("cancel"))}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
+function renderLeaseDocsModal(modal) {
+  const lease = state.data.leases.find((item) => item.id === modal.leaseId);
+  const docs = modal.docs || [];
+
+  return `
+    <div class="modal-overlay" data-close-modal="true">
+      <div class="modal-card small" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">${safeText(t("lease_documents"))}</h2>
+            <p class="section-copy">${safeText(lease ? `${lease.principalTenant.firstName} ${lease.principalTenant.lastName} - ${lease.property.unit}` : "")}</p>
+          </div>
+          <button class="ghost-button" type="button" data-action="close-modal">${safeText(t("close"))}</button>
+        </div>
+        ${docs.length
+          ? `
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>${safeText(t("document_name"))}</th>
+                  <th>${safeText(t("uploaded_on"))}</th>
+                  <th>${safeText(t("actions"))}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${docs
+                  .map(
+                    (doc) => `
+                  <tr>
+                    <td>${safeText(doc.fileName)}</td>
+                    <td>${safeText(formatDate(doc.createdAt))}</td>
+                    <td>
+                      <div class="table-action-group">
+                        <button class="ghost-button table-action-button" type="button" data-action="open-lease-document" data-id="${safeText(doc.id)}">${safeText(t("open_document"))}</button>
+                      </div>
+                    </td>
+                  </tr>
+                `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+          `
+          : `<div class="empty-state">${safeText(t("no_lease_documents"))}</div>`}
+        <form id="lease-docs-form" class="form-grid" style="margin-top:18px;">
+          <input type="hidden" name="leaseId" value="${safeText(modal.leaseId)}">
+          <div class="field">
+            <label>${safeText(t("upload_pdf_documents"))}</label>
+            <input name="leaseDocsFiles" type="file" accept="application/pdf" multiple required>
+          </div>
+          <div class="button-row">
+            <button class="primary-button" type="submit">${safeText(t("upload_selected_pdfs"))}</button>
           </div>
         </form>
       </div>
@@ -1871,6 +1959,7 @@ function bindPortalEvents() {
 
   document.getElementById("tenant-profile-form")?.addEventListener("submit", handleTenantProfileSave);
   document.getElementById("lease-form")?.addEventListener("submit", handleLeaseSave);
+  document.getElementById("lease-docs-form")?.addEventListener("submit", handleLeaseDocsUpload);
   document.getElementById("ticket-form")?.addEventListener("submit", handleTicketCreate);
   document.getElementById("payment-form")?.addEventListener("submit", handlePaymentCreate);
 }
@@ -1894,6 +1983,9 @@ async function handleAction(action, id) {
       setState((draft) => {
         draft.ui.modal = { type: "lease-form", leaseId: id };
       });
+      break;
+    case "lease-docs":
+      openLeaseDocs(id);
       break;
     case "delete-lease":
       openConfirm(
@@ -1943,6 +2035,9 @@ async function handleAction(action, id) {
       break;
     case "download-payment-history":
       downloadPaymentHistoryPdf();
+      break;
+    case "open-lease-document":
+      openLeaseDocument(id);
       break;
     case "close-modal":
       closeModal();
@@ -2050,6 +2145,7 @@ async function handleLeaseSave(event) {
       description: row.querySelector('[name="otherPaymentDescription"]').value.trim(),
     }))
     .filter((item) => item.amount || item.description);
+  const selectedFiles = Array.from(event.currentTarget.querySelector('[name="leaseDocuments"]')?.files || []);
 
   const leasePayload = {
     principalTenant: {
@@ -2101,6 +2197,10 @@ async function handleLeaseSave(event) {
         property: leasePayload.property,
         terms: leasePayload.terms
       });
+
+      if (selectedFiles.length) {
+        await uploadLeaseDocuments(finalLeaseId, selectedFiles);
+      }
     }
   } catch (error) {
     setFlash(error instanceof Error ? error.message : t("lease_updated"));
@@ -2112,8 +2212,28 @@ async function handleLeaseSave(event) {
   setState((draft) => {
     draft.ui.modal = null;
     draft.session.page = "leases";
-    draft.ui.flash = existingLease ? t("lease_updated") : t("lease_created");
+    draft.ui.flash = selectedFiles.length
+      ? t("documents_uploaded")
+      : existingLease
+        ? t("lease_updated")
+        : t("lease_created");
   });
+}
+
+async function handleLeaseDocsUpload(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const leaseId = String(form.get("leaseId") || "").trim();
+  const files = Array.from(event.currentTarget.querySelector('[name="leaseDocsFiles"]')?.files || []);
+
+  if (!leaseId || !files.length) return;
+
+  try {
+    await uploadLeaseDocuments(leaseId, files);
+    await openLeaseDocs(leaseId, files.length > 1 ? t("documents_uploaded") : t("document_uploaded"));
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("document_uploaded"));
+  }
 }
 
 async function deleteLease(leaseId) {
@@ -2285,6 +2405,78 @@ async function handlePaymentCreate(event) {
 
 function fullAddress(property) {
   return `${property.street}, ${property.city}, ${property.state} ${property.zip}, ${property.unit}`;
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || "");
+      const [, base64 = ""] = result.split(",");
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("Unable to read file."));
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadLeaseDocuments(leaseId, files) {
+  for (const file of files) {
+    if (file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      throw new Error(t("pdf_only_error"));
+    }
+
+    const contentBase64 = await fileToBase64(file);
+    await postJson("/api/session", {
+      action: "upload-lease-document",
+      leaseId,
+      fileName: file.name,
+      mimeType: "application/pdf",
+      contentBase64
+    });
+  }
+}
+
+async function openLeaseDocs(leaseId, flashMessage = "") {
+  try {
+    const result = await postJson("/api/session", {
+      action: "list-lease-documents",
+      leaseId
+    });
+
+    setState((draft) => {
+      draft.ui.modal = {
+        type: "lease-docs",
+        leaseId,
+        docs: result.docs || []
+      };
+      if (flashMessage) {
+        draft.ui.flash = flashMessage;
+      }
+    });
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("lease_documents"));
+  }
+}
+
+async function openLeaseDocument(documentId) {
+  try {
+    const result = await postJson("/api/session", {
+      action: "open-lease-document",
+      documentId
+    });
+
+    if (!result?.document?.contentBase64 || !result.document.mimeType) return;
+
+    const byteCharacters = atob(result.document.contentBase64);
+    const byteNumbers = Array.from(byteCharacters, (char) => char.charCodeAt(0));
+    const blob = new Blob([new Uint8Array(byteNumbers)], { type: result.document.mimeType });
+    const blobUrl = URL.createObjectURL(blob);
+    window.open(blobUrl, "_blank", "noopener,noreferrer");
+    setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("lease_documents"));
+  }
 }
 
 function getJsPdf() {
