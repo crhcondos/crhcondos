@@ -255,8 +255,7 @@ export default async function handler(req, res) {
             firstChargeDate,
             stopMode,
             stopDate: resolvedStopDate
-          },
-          cancel_at: endOfDateUnix(resolvedStopDate)
+          }
         };
 
         if (firstChargeDate > todayDateOnly()) {
@@ -337,6 +336,10 @@ export default async function handler(req, res) {
         if (!checkoutSession.subscription || typeof checkoutSession.subscription === "string") {
           return res.status(400).json({ error: "The autopay subscription is still being prepared." });
         }
+
+        await stripe.subscriptions.update(String(checkoutSession.subscription.id), {
+          cancel_at: endOfDateUnix(String(checkoutSession.metadata?.stopDate || ""))
+        });
 
         await upsertAutopayEnrollment(sql, checkoutSession, checkoutSession.subscription);
         return res.status(200).json({ ok: true });

@@ -8,6 +8,14 @@ import {
   upsertAutopayPayment
 } from "./_lib/autopay.js";
 
+function endOfDateUnix(dateString) {
+  const [year, month, day] = String(dateString || "").split("-").map(Number);
+  if (!year || !month || !day) {
+    throw new Error("Invalid date.");
+  }
+  return Math.floor(Date.UTC(year, month - 1, day, 23, 59, 59) / 1000);
+}
+
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
       apiVersion: "2026-02-25.clover"
@@ -60,6 +68,12 @@ export default async function handler(req, res) {
       const session = event.data.object;
 
       if (session.mode === "subscription" && session.subscription) {
+        const stopDate = String(session.metadata?.stopDate || "").trim();
+        if (stopDate) {
+          await stripe.subscriptions.update(String(session.subscription), {
+            cancel_at: endOfDateUnix(stopDate)
+          });
+        }
         const subscription = await stripe.subscriptions.retrieve(String(session.subscription));
         await upsertAutopayEnrollment(sql, session, subscription);
       } else {
