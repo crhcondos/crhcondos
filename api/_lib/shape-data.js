@@ -5,6 +5,7 @@ export function shapeAppData({
   leaseOtherPayments,
   payments,
   tickets,
+  autopays,
   stripe
 }) {
   const derivativeMap = new Map();
@@ -72,6 +73,7 @@ export function shapeAppData({
       id: row.id,
       leaseId: row.lease_id,
       tenantUserId: row.tenant_user_id,
+      stripeSubscriptionId: row.stripe_subscription_id,
       date: formatDateOnly(row.paid_at || row.created_at),
       amount: Number(row.amount_cents) / 100,
       method: row.method,
@@ -86,6 +88,21 @@ export function shapeAppData({
       description: row.description,
       status: row.status,
       createdAt: formatDateOnly(row.created_at)
+    })),
+    autopays: (autopays || []).map((row) => ({
+      id: row.id,
+      leaseId: row.lease_id,
+      tenantUserId: row.tenant_user_id,
+      stripeSubscriptionId: row.stripe_subscription_id,
+      amount: Number(row.amount_cents) / 100,
+      description: row.description,
+      firstChargeDate: formatDateOnly(row.first_charge_date),
+      stopMode: row.stop_mode,
+      stopDate: formatDateOnly(row.stop_date),
+      status: row.status,
+      createdAt: formatDateOnly(row.created_at),
+      updatedAt: formatDateOnly(row.updated_at),
+      canceledAt: formatDateOnly(row.canceled_at)
     })),
     stripe
   };

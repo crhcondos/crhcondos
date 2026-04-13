@@ -47,6 +47,8 @@ create table payments (
   lease_id text not null references leases(id) on delete cascade,
   tenant_user_id text not null references users(id) on delete cascade,
   stripe_checkout_session_id text unique,
+  stripe_invoice_id text unique,
+  stripe_subscription_id text,
   amount_cents integer not null check (amount_cents >= 0),
   description text not null,
   method text not null,
@@ -75,9 +77,29 @@ create table lease_documents (
   created_at timestamptz not null default now()
 );
 
+create table autopay_enrollments (
+  id text primary key,
+  lease_id text not null references leases(id) on delete cascade,
+  tenant_user_id text not null references users(id) on delete cascade,
+  stripe_customer_id text,
+  stripe_subscription_id text unique,
+  stripe_checkout_session_id text unique,
+  amount_cents integer not null check (amount_cents >= 0),
+  description text not null,
+  first_charge_date date not null,
+  stop_mode text not null check (stop_mode in ('specific_date', 'lease_end')),
+  stop_date date,
+  status text not null check (status in ('Pending', 'Active', 'PastDue', 'Canceled', 'Ended')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  canceled_at timestamptz
+);
+
 create index idx_leases_principal_tenant_user_id on leases(principal_tenant_user_id);
 create index idx_payments_lease_id on payments(lease_id);
 create index idx_payments_tenant_user_id on payments(tenant_user_id);
 create index idx_tickets_lease_id on tickets(lease_id);
 create index idx_tickets_tenant_user_id on tickets(tenant_user_id);
 create index idx_lease_documents_lease_id on lease_documents(lease_id);
+create index idx_autopay_enrollments_lease_id on autopay_enrollments(lease_id);
+create index idx_autopay_enrollments_tenant_user_id on autopay_enrollments(tenant_user_id);

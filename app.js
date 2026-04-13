@@ -210,6 +210,33 @@ const I18N = {
     payment_return_success: "Stripe payment completed successfully.",
     payment_return_cancelled: "Stripe payment was cancelled before completion.",
     payment_return_pending: "Stripe returned successfully, but the payment record is still being confirmed.",
+    autopay: "Autopay",
+    autopay_copy: "Set up automatic monthly rent payments on your preferred billing date.",
+    setup_autopay: "Set Up Autopay",
+    autopay_status_title: "Autopay status",
+    autopay_none: "No autopay schedule is active right now.",
+    autopay_active: "Autopay is active for this lease.",
+    autopay_pending: "Autopay is scheduled and waiting for the first charge date.",
+    autopay_amount: "Autopay amount",
+    first_charge_date: "First charge date",
+    next_charge_date: "Next charge date",
+    stop_autopay_on: "Stop autopay",
+    specific_date: "Specific date",
+    lease_end_autopay: "At lease end",
+    stop_date: "Stop date",
+    autopay_modal_title: "Set Up Autopay",
+    autopay_modal_copy: "Choose the recurring amount, the first charge date, and when the automatic payments should stop.",
+    activate_autopay: "Activate autopay",
+    cancel_autopay: "Cancel autopay",
+    autopay_scheduled: "Autopay scheduled successfully.",
+    autopay_cancelled: "Autopay cancelled successfully.",
+    autopay_return_success: "Autopay was activated successfully.",
+    autopay_return_cancelled: "Autopay setup was cancelled before completion.",
+    autopay_return_pending: "Stripe returned successfully, but the autopay setup is still being confirmed.",
+    autopay_manage_copy: "Stripe will charge the saved payment method automatically each month.",
+    autopay_history_title: "Autopay schedules",
+    autopay_history_copy: "Current and past autopay enrollments across all leases.",
+    no_autopays: "No autopay schedules have been created yet.",
     download_receipt: "Download receipt",
     download_payment_history_pdf: "Download payment history PDF",
     docs: "Docs",
@@ -424,6 +451,33 @@ const I18N = {
     payment_return_success: "El pago con Stripe se completo correctamente.",
     payment_return_cancelled: "El pago con Stripe fue cancelado antes de completarse.",
     payment_return_pending: "Stripe regreso correctamente, pero el registro del pago todavia se esta confirmando.",
+    autopay: "Autopay",
+    autopay_copy: "Programa pagos mensuales automaticos de renta en la fecha de cobro que prefieras.",
+    setup_autopay: "Programar Autopay",
+    autopay_status_title: "Estado de autopay",
+    autopay_none: "No hay un autopay activo en este momento.",
+    autopay_active: "El autopay esta activo para este contrato.",
+    autopay_pending: "El autopay ya fue programado y espera su primera fecha de cobro.",
+    autopay_amount: "Monto de autopay",
+    first_charge_date: "Primera fecha de cobro",
+    next_charge_date: "Proximo cobro",
+    stop_autopay_on: "Detener autopay",
+    specific_date: "Fecha especifica",
+    lease_end_autopay: "Al final del contrato",
+    stop_date: "Fecha de fin",
+    autopay_modal_title: "Programar Autopay",
+    autopay_modal_copy: "Elige el monto recurrente, la primera fecha de cobro y cuando deben detenerse los pagos automaticos.",
+    activate_autopay: "Activar autopay",
+    cancel_autopay: "Cancelar autopay",
+    autopay_scheduled: "Autopay programado correctamente.",
+    autopay_cancelled: "Autopay cancelado correctamente.",
+    autopay_return_success: "El autopay se activo correctamente.",
+    autopay_return_cancelled: "La programacion de autopay fue cancelada antes de completarse.",
+    autopay_return_pending: "Stripe regreso correctamente, pero el autopay todavia se esta confirmando.",
+    autopay_manage_copy: "Stripe cobrara automaticamente el metodo de pago guardado cada mes.",
+    autopay_history_title: "Programaciones de autopay",
+    autopay_history_copy: "Programaciones actuales y anteriores de autopay en todos los contratos.",
+    no_autopays: "Todavia no se han creado programaciones de autopay.",
     download_receipt: "Descargar recibo",
     download_payment_history_pdf: "Descargar historial en PDF",
     docs: "Docs",
@@ -557,7 +611,7 @@ function seedData() {
         },
       },
     ],
-    payments: [
+      payments: [
       {
         id: uid("pay"),
         leaseId: "lease-seed-1",
@@ -588,8 +642,9 @@ function seedData() {
         description: "Final rent cycle",
         status: "Paid",
       },
-    ],
-    tickets: [
+      ],
+      autopays: [],
+      tickets: [
       {
         id: uid("ticket"),
         leaseId: "lease-seed-1",
@@ -642,6 +697,7 @@ function uid(prefix) {
 }
 
 function hydrateRelationships(data) {
+  data.autopays = data.autopays || [];
   data.leases.forEach((lease) => {
     const user = data.users.find(
       (entry) =>
@@ -689,6 +745,60 @@ function getLeaseByUser(userId) {
   return state.data.leases.find((lease) => lease.principalTenantUserId === userId) ?? null;
 }
 
+function activeAutopayStatuses() {
+  return ["Pending", "Active", "PastDue"];
+}
+
+function getAutopayByUser(userId) {
+  return (state.data.autopays || []).find(
+    (autopay) => autopay.tenantUserId === userId && activeAutopayStatuses().includes(autopay.status)
+  ) ?? null;
+}
+
+function getAutopayByLease(leaseId) {
+  return (state.data.autopays || []).find(
+    (autopay) => autopay.leaseId === leaseId && activeAutopayStatuses().includes(autopay.status)
+  ) ?? null;
+}
+
+function addMonthsClamped(dateString, monthsToAdd) {
+  const [year, month, day] = String(dateString).split("-").map(Number);
+  const targetMonthIndex = (month - 1) + monthsToAdd;
+  const targetYear = year + Math.floor(targetMonthIndex / 12);
+  const normalizedMonthIndex = ((targetMonthIndex % 12) + 12) % 12;
+  const daysInMonth = new Date(Date.UTC(targetYear, normalizedMonthIndex + 1, 0)).getUTCDate();
+  const safeDay = Math.min(day, daysInMonth);
+  return new Date(Date.UTC(targetYear, normalizedMonthIndex, safeDay)).toISOString().slice(0, 10);
+}
+
+function compareDateOnly(a, b) {
+  return String(a || "").localeCompare(String(b || ""));
+}
+
+function getNextAutopayChargeDate(autopay) {
+  if (!autopay || !activeAutopayStatuses().includes(autopay.status)) return "";
+
+  const relatedPayments = (state.data.payments || [])
+    .filter((payment) => payment.stripeSubscriptionId && payment.stripeSubscriptionId === autopay.stripeSubscriptionId)
+    .sort((a, b) => compareDateOnly(b.date, a.date));
+
+  let nextDate = autopay.firstChargeDate;
+  if (relatedPayments.length) {
+    nextDate = addMonthsClamped(relatedPayments[0].date, 1);
+  } else {
+    const today = new Date().toISOString().slice(0, 10);
+    while (compareDateOnly(nextDate, today) < 0) {
+      nextDate = addMonthsClamped(nextDate, 1);
+    }
+  }
+
+  if (autopay.stopDate && compareDateOnly(nextDate, autopay.stopDate) > 0) {
+    return "";
+  }
+
+  return nextDate;
+}
+
 function formatCurrency(amount) {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
@@ -723,10 +833,21 @@ function localizeStatus(value) {
     Open: currentLanguage() === "es" ? "Abierto" : "Open",
     Closed: currentLanguage() === "es" ? "Cerrado" : "Closed",
     Paid: currentLanguage() === "es" ? "Pagado" : "Paid",
+    PastDue: currentLanguage() === "es" ? "Vencido" : "Past due",
+    Canceled: currentLanguage() === "es" ? "Cancelado" : "Canceled",
+    Ended: currentLanguage() === "es" ? "Finalizado" : "Ended",
+    Pending: currentLanguage() === "es" ? "Pendiente" : "Pending",
     demo: currentLanguage() === "es" ? "demo" : "demo",
     live: currentLanguage() === "es" ? "en vivo" : "live",
   };
   return map[value] || value;
+}
+
+function autopayStatusClass(status) {
+  if (status === "Active") return "status-active";
+  if (status === "PastDue") return "status-inactive";
+  if (status === "Canceled" || status === "Ended") return "status-closed";
+  return "status-pending";
 }
 
 function pageTitle() {
@@ -1087,12 +1208,45 @@ function renderAdminPayments() {
   const payments = leaseFilterId
     ? state.data.payments.filter((payment) => payment.leaseId === leaseFilterId)
     : state.data.payments;
+  const autopays = leaseFilterId
+    ? (state.data.autopays || []).filter((autopay) => autopay.leaseId === leaseFilterId)
+    : (state.data.autopays || []);
   const filteredLease = leaseFilterId
     ? state.data.leases.find((item) => item.id === leaseFilterId)
     : null;
 
   return `
     <div class="page-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="section-title">${safeText(t("autopay_history_title"))}</h2>
+            <p class="section-copy">${safeText(t("autopay_history_copy"))}</p>
+          </div>
+        </div>
+        ${autopays.length
+          ? `
+          <div class="table-wrap">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>${safeText(t("tenant"))}</th>
+                  <th>${safeText(t("autopay_amount"))}</th>
+                  <th>${safeText(t("first_charge_date"))}</th>
+                  <th>${safeText(t("next_charge_date"))}</th>
+                  <th>${safeText(t("stop_date"))}</th>
+                  <th>${safeText(t("status"))}</th>
+                  <th>${safeText(t("actions"))}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${autopays.map(renderAdminAutopayRow).join("")}
+              </tbody>
+            </table>
+          </div>
+          `
+          : `<div class="empty-state">${safeText(t("no_autopays"))}</div>`}
+      </section>
       <section class="panel">
         <div class="panel-header">
           <div>
@@ -1136,6 +1290,28 @@ function renderAdminPayments() {
           : `<div class="empty-state">${safeText(t("no_payments_for_lease"))}</div>`}
       </section>
     </div>
+  `;
+}
+
+function renderAdminAutopayRow(autopay) {
+  const lease = state.data.leases.find((item) => item.id === autopay.leaseId);
+  const nextChargeDate = getNextAutopayChargeDate(autopay);
+  return `
+    <tr>
+      <td>${safeText(lease ? `${lease.principalTenant.firstName} ${lease.principalTenant.lastName}` : "Unknown")}</td>
+      <td>${safeText(formatCurrency(autopay.amount))}</td>
+      <td>${safeText(formatDate(autopay.firstChargeDate))}</td>
+      <td>${safeText(nextChargeDate ? formatDate(nextChargeDate) : "—")}</td>
+      <td>${safeText(autopay.stopDate ? formatDate(autopay.stopDate) : "—")}</td>
+      <td><span class="status-pill ${autopayStatusClass(autopay.status)}">${safeText(localizeStatus(autopay.status))}</span></td>
+      <td>
+        <div class="table-action-group">
+          ${activeAutopayStatuses().includes(autopay.status)
+            ? `<button class="ghost-button table-action-button" type="button" data-action="cancel-autopay" data-id="${safeText(autopay.id)}">${safeText(t("cancel_autopay"))}</button>`
+            : "—"}
+        </div>
+      </td>
+    </tr>
   `;
 }
 
@@ -1383,7 +1559,9 @@ function renderTenantPayments() {
   const user = getCurrentUser();
   const lease = getLeaseByUser(user.id);
   const payments = state.data.payments.filter((payment) => payment.tenantUserId === user.id);
+  const autopay = getAutopayByUser(user.id);
   const due = lease ? Number(lease.terms.monthlyCost) : 0;
+  const nextChargeDate = getNextAutopayChargeDate(autopay);
 
   return `
     <div class="page-grid">
@@ -1399,6 +1577,51 @@ function renderTenantPayments() {
           <div class="button-row">
             <button class="primary-button" type="button" data-action="make-payment">${safeText(t("make_payment"))}</button>
           </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2 class="section-title">${safeText(t("autopay"))}</h2>
+            <p class="section-copy">${safeText(t("autopay_copy"))}</p>
+          </div>
+        </div>
+        <div class="payment-card">
+          ${autopay
+            ? `
+            <span class="metric-label">${safeText(t("autopay_status_title"))}</span>
+            <strong class="metric-value">${safeText(formatCurrency(autopay.amount))}</strong>
+            <p class="section-copy">${safeText(autopay.status === "Pending" ? t("autopay_pending") : t("autopay_active"))}</p>
+            <div class="detail-list" style="margin-top:16px;">
+              <div class="detail-item">
+                <strong>${safeText(t("first_charge_date"))}</strong>
+                <span>${safeText(formatDate(autopay.firstChargeDate))}</span>
+              </div>
+              <div class="detail-item">
+                <strong>${safeText(t("next_charge_date"))}</strong>
+                <span>${safeText(nextChargeDate ? formatDate(nextChargeDate) : "—")}</span>
+              </div>
+              <div class="detail-item">
+                <strong>${safeText(t("stop_autopay_on"))}</strong>
+                <span>${safeText(autopay.stopMode === "lease_end" ? t("lease_end_autopay") : t("specific_date"))}</span>
+              </div>
+              <div class="detail-item">
+                <strong>${safeText(t("stop_date"))}</strong>
+                <span>${safeText(autopay.stopDate ? formatDate(autopay.stopDate) : "—")}</span>
+              </div>
+            </div>
+            <div class="button-row" style="margin-top:16px;">
+              <button class="ghost-button" type="button" data-action="cancel-autopay" data-id="${safeText(autopay.id)}">${safeText(t("cancel_autopay"))}</button>
+            </div>
+            `
+            : `
+            <span class="metric-label">${safeText(t("autopay_status_title"))}</span>
+            <strong class="metric-value">${safeText(formatCurrency(due))}</strong>
+            <p class="section-copy">${safeText(t("autopay_none"))}</p>
+            <div class="button-row">
+              <button class="primary-button" type="button" data-action="open-setup-autopay">${safeText(t("setup_autopay"))}</button>
+            </div>
+            `}
         </div>
       </section>
       <section class="panel">
@@ -1513,6 +1736,7 @@ function renderModal() {
   if (modal.type === "ticket-view") return renderTicketViewModal(modal.ticketId);
   if (modal.type === "ticket-form") return renderTicketFormModal();
   if (modal.type === "payment-form") return renderPaymentFormModal();
+  if (modal.type === "autopay-form") return renderAutopayFormModal();
   return "";
 }
 
@@ -1886,6 +2110,56 @@ function renderPaymentFormModal() {
   `;
 }
 
+function renderAutopayFormModal() {
+  const user = getCurrentUser();
+  const lease = getLeaseByUser(user.id);
+  const today = new Date().toISOString().slice(0, 10);
+  const defaultStartDate = lease?.terms?.startDate && lease.terms.startDate > today ? lease.terms.startDate : today;
+
+  return `
+    <div class="modal-overlay" data-close-modal="true">
+      <div class="modal-card small" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title">${safeText(t("autopay_modal_title"))}</h2>
+            <p class="section-copy">${safeText(t("autopay_modal_copy"))}</p>
+          </div>
+          <button class="ghost-button" type="button" data-action="close-modal">${safeText(t("close"))}</button>
+        </div>
+        <form id="autopay-form" class="form-grid">
+          <div class="field">
+            <label>${safeText(t("amount"))}</label>
+            <input name="amount" type="number" min="0" step="0.01" value="${safeText(lease?.terms.monthlyCost || "")}" required>
+          </div>
+          <div class="field">
+            <label>${safeText(t("description"))}</label>
+            <input name="description" value="${safeText(t("monthly_rent"))}" required>
+          </div>
+          <div class="field">
+            <label>${safeText(t("first_charge_date"))}</label>
+            <input name="firstChargeDate" type="date" value="${safeText(defaultStartDate)}" min="${safeText(today)}" required>
+          </div>
+          <div class="field">
+            <label>${safeText(t("stop_autopay_on"))}</label>
+            <select name="stopMode" required>
+              <option value="lease_end">${safeText(t("lease_end_autopay"))}</option>
+              <option value="specific_date">${safeText(t("specific_date"))}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>${safeText(t("stop_date"))}</label>
+            <input name="stopDate" type="date" value="${safeText(lease?.terms?.endDate || "")}" max="${safeText(lease?.terms?.endDate || "")}">
+          </div>
+          <div class="button-row">
+            <button class="primary-button" type="submit">${safeText(t("activate_autopay"))}</button>
+            <button class="ghost-button" type="button" data-action="close-modal">${safeText(t("cancel"))}</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  `;
+}
+
 function bindWelcomeEvents() {
   document.querySelectorAll("[data-role]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1968,6 +2242,7 @@ function bindPortalEvents() {
   document.getElementById("lease-docs-form")?.addEventListener("submit", handleLeaseDocsUpload);
   document.getElementById("ticket-form")?.addEventListener("submit", handleTicketCreate);
   document.getElementById("payment-form")?.addEventListener("submit", handlePaymentCreate);
+  document.getElementById("autopay-form")?.addEventListener("submit", handleAutopayCreate);
 }
 
 async function handleAction(action, id) {
@@ -2035,6 +2310,14 @@ async function handleAction(action, id) {
       setState((draft) => {
         draft.ui.modal = { type: "payment-form" };
       });
+      break;
+    case "open-setup-autopay":
+      setState((draft) => {
+        draft.ui.modal = { type: "autopay-form" };
+      });
+      break;
+    case "cancel-autopay":
+      await cancelAutopay(id);
       break;
     case "download-payment-receipt":
       downloadPaymentReceiptPdf(id);
@@ -2412,6 +2695,50 @@ async function handlePaymentCreate(event) {
   }
 }
 
+async function handleAutopayCreate(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const amount = Number(form.get("amount") || 0);
+  const description = String(form.get("description") || "").trim();
+  const firstChargeDate = String(form.get("firstChargeDate") || "").trim();
+  const stopMode = String(form.get("stopMode") || "lease_end");
+  const stopDate = String(form.get("stopDate") || "").trim();
+
+  try {
+    await startStripeAutopayCheckout({
+      amountCents: Math.round(amount * 100),
+      description,
+      firstChargeDate,
+      stopMode,
+      stopDate
+    });
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("autopay_scheduled"));
+  }
+}
+
+async function cancelAutopay(autopayId) {
+  if (!autopayId) return;
+
+  try {
+    await postJson("/api/session", {
+      action: "cancel-autopay",
+      autopayId
+    });
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("autopay_cancelled"));
+    return;
+  }
+
+  await refreshSessionData();
+  setState((draft) => {
+    draft.ui.flash = t("autopay_cancelled");
+    if (draft.ui.modal?.type === "autopay-form") {
+      draft.ui.modal = null;
+    }
+  });
+}
+
 function fullAddress(property) {
   return `${property.street}, ${property.city}, ${property.state} ${property.zip}, ${property.unit}`;
 }
@@ -2707,6 +3034,19 @@ async function startStripeCheckout(payload) {
   window.location.href = result.url;
 }
 
+async function startStripeAutopayCheckout(payload) {
+  const result = await postJson("/api/session", {
+    action: "start-autopay",
+    ...payload
+  });
+
+  if (!result?.url) {
+    throw new Error("Unable to start Stripe Checkout.");
+  }
+
+  window.location.href = result.url;
+}
+
 async function tryServerLogin({ email, password, role }) {
   if (!window.location.protocol.startsWith("http")) return null;
 
@@ -2788,17 +3128,60 @@ async function initializeServerSession() {
       draft.ui.flash = "";
     });
 
-    await handlePaymentReturnRedirect();
+    await handleStripeReturnRedirect();
   } catch (_error) {
     // Keep the local welcome view if the hosted session endpoint is unavailable.
   }
 }
 
-async function handlePaymentReturnRedirect() {
+async function handleStripeReturnRedirect() {
   const params = new URLSearchParams(window.location.search);
   const paymentStatus = params.get("payment");
+  const autopayStatus = params.get("autopay");
   const checkoutSessionId = params.get("session_id");
-  if (!paymentStatus) return;
+  if (!paymentStatus && !autopayStatus) return;
+
+  if (autopayStatus === "success") {
+    try {
+      if (checkoutSessionId) {
+        await postJson("/api/session", {
+          action: "confirm-autopay",
+          sessionId: checkoutSessionId
+        });
+      }
+    } catch (_error) {
+      await refreshSessionData();
+      setState((draft) => {
+        draft.ui.modal = null;
+        draft.session.page = "payments";
+        draft.ui.flash = t("autopay_return_pending");
+      });
+      const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+      window.history.replaceState({}, "", cleanUrl);
+      return;
+    }
+
+    await refreshSessionData();
+    setState((draft) => {
+      draft.ui.modal = null;
+      draft.session.page = "payments";
+      draft.ui.flash = t("autopay_return_success");
+    });
+    const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, "", cleanUrl);
+    return;
+  }
+
+  if (autopayStatus === "cancelled") {
+    setState((draft) => {
+      draft.ui.modal = null;
+      draft.session.page = "payments";
+      draft.ui.flash = t("autopay_return_cancelled");
+    });
+    const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+    window.history.replaceState({}, "", cleanUrl);
+    return;
+  }
 
   if (paymentStatus === "success") {
     try {

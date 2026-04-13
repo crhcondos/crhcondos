@@ -1,6 +1,9 @@
 import { shapeAppData } from "./shape-data.js";
+import { ensureAutopaySchema } from "./autopay.js";
 
 export async function loadSessionData(sql, userId, role) {
+  await ensureAutopaySchema(sql);
+
   const users =
     role === "admin"
       ? await sql`
@@ -60,12 +63,12 @@ export async function loadSessionData(sql, userId, role) {
   const payments =
     role === "admin"
       ? await sql`
-          select id, lease_id, tenant_user_id, amount_cents, description, method, status, paid_at, created_at
+          select id, lease_id, tenant_user_id, stripe_subscription_id, amount_cents, description, method, status, paid_at, created_at
           from payments
           order by created_at desc
         `
       : await sql`
-          select id, lease_id, tenant_user_id, amount_cents, description, method, status, paid_at, created_at
+          select id, lease_id, tenant_user_id, stripe_subscription_id, amount_cents, description, method, status, paid_at, created_at
           from payments
           where tenant_user_id = ${userId}
           order by created_at desc
@@ -85,6 +88,46 @@ export async function loadSessionData(sql, userId, role) {
           order by created_at desc
         `;
 
+  const autopays =
+    role === "admin"
+      ? await sql`
+          select
+            id,
+            lease_id,
+            tenant_user_id,
+            stripe_subscription_id,
+            amount_cents,
+            description,
+            first_charge_date,
+            stop_mode,
+            stop_date,
+            status,
+            created_at,
+            updated_at,
+            canceled_at
+          from autopay_enrollments
+          order by created_at desc
+        `
+      : await sql`
+          select
+            id,
+            lease_id,
+            tenant_user_id,
+            stripe_subscription_id,
+            amount_cents,
+            description,
+            first_charge_date,
+            stop_mode,
+            stop_date,
+            status,
+            created_at,
+            updated_at,
+            canceled_at
+          from autopay_enrollments
+          where tenant_user_id = ${userId}
+          order by created_at desc
+        `;
+
   return shapeAppData({
     users,
     leases,
@@ -92,6 +135,7 @@ export async function loadSessionData(sql, userId, role) {
     leaseOtherPayments,
     payments,
     tickets,
+    autopays,
     stripe: {
       mode: process.env.STRIPE_MODE === "live" ? "live" : "demo",
       publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "",

@@ -1,6 +1,12 @@
 import Stripe from "stripe";
 import { getSql } from "./_lib/db.js";
 import { upsertCheckoutPayment } from "./_lib/stripe-checkout-payment.js";
+import {
+  ensureAutopaySchema,
+  updateAutopayStatus,
+  upsertAutopayEnrollment,
+  upsertAutopayPayment
+} from "./_lib/autopay.js";
 
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -40,6 +46,7 @@ export default async function handler(req, res) {
 
   try {
     const sql = getSql();
+    await ensureAutopaySchema(sql);
     const rawBody = await readRawBody(req);
     const signature = req.headers["stripe-signature"];
 
@@ -51,12 +58,50 @@ export default async function handler(req, res) {
 
     if (event.type === "checkout.session.completed") {
       const session = event.data.object;
-      await upsertCheckoutPayment(sql, session);
+
+      if (session.mode === "subscription" && session.subscription) {
+        const subscription = await stripe.subscriptions.retrieve(String(session.subscription));
+        await upsertAutopayEnrollment(sql, session, subscription);
+      } else {
+        await upsertCheckoutPayment(sql, session);
+      }
     }
 
     if (event.type === "checkout.session.async_payment_succeeded") {
       const session = event.data.object;
       await upsertCheckoutPayment(sql, session, "Paid");
+    }
+
+    if (event.type === "invoice.paid") {
+      const invoice = event.data.object;
+      if (invoice.subscription) {
+        const subscription = await stripe.subscriptions.retrieve(String(invoice.subscription));
+        await upsertAutopayPayment(sql, invoice, subscription);
+      }
+    }
+
+    if (event.type === "invoice.payment_failed") {
+      const invoice = event.data.object;
+      if (invoice.subscription) {
+        const subscription = await stripe.subscriptions.retrieve(String(invoice.subscription));
+        await updateAutopayStatus(sql, {
+          ...subscription,
+          status: "past_due"
+        });
+      }
+    }
+
+    if (event.type === "customer.subscription.deleted") {
+      const subscription = event.data.object;
+      await updateAutopayStatus(sql, {
+        ...subscription,
+        status: "canceled"
+      });
+    }
+
+    if (event.type === "customer.subscription.updated") {
+      const subscription = event.data.object;
+      await updateAutopayStatus(sql, subscription);
     }
 
     return res.status(200).json({ received: true });
