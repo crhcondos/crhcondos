@@ -224,6 +224,7 @@ const I18N = {
     document_uploaded: "Document uploaded successfully.",
     documents_uploaded: "Documents uploaded successfully.",
     select_pdf_files: "Select one or more PDF files",
+    document_deleted: "Document deleted successfully.",
     payment_receipt_title: "Payment Receipt",
     payment_history_pdf_title: "Payment History",
     receipt_payment_date: "Payment date",
@@ -437,6 +438,7 @@ const I18N = {
     document_uploaded: "Documento subido correctamente.",
     documents_uploaded: "Documentos subidos correctamente.",
     select_pdf_files: "Selecciona uno o varios archivos PDF",
+    document_deleted: "Documento eliminado correctamente.",
     payment_receipt_title: "Recibo de Pago",
     payment_history_pdf_title: "Historial de Pagos",
     receipt_payment_date: "Fecha de pago",
@@ -696,7 +698,10 @@ function formatCurrency(amount) {
 
 function formatDate(dateString) {
   if (!dateString) return "—";
-  return new Date(`${dateString}T00:00:00`).toLocaleDateString("en-US", {
+  const normalized = String(dateString).includes("T") ? String(dateString) : `${dateString}T00:00:00`;
+  const parsed = new Date(normalized);
+  if (Number.isNaN(parsed.getTime())) return "—";
+  return parsed.toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -1699,6 +1704,7 @@ function renderLeaseDocsModal(modal) {
                     <td>
                       <div class="table-action-group">
                         <button class="ghost-button table-action-button" type="button" data-action="open-lease-document" data-id="${safeText(doc.id)}">${safeText(t("open_document"))}</button>
+                        <button class="ghost-button table-action-button" type="button" data-action="delete-lease-document" data-id="${safeText(doc.id)}">${safeText(t("delete"))}</button>
                       </div>
                     </td>
                   </tr>
@@ -2038,6 +2044,9 @@ async function handleAction(action, id) {
       break;
     case "open-lease-document":
       openLeaseDocument(id);
+      break;
+    case "delete-lease-document":
+      deleteLeaseDocument(id);
       break;
     case "close-modal":
       closeModal();
@@ -2476,6 +2485,22 @@ async function openLeaseDocument(documentId) {
     setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
   } catch (error) {
     setFlash(error instanceof Error ? error.message : t("lease_documents"));
+  }
+}
+
+async function deleteLeaseDocument(documentId) {
+  const modal = state.ui.modal;
+  if (!modal || modal.type !== "lease-docs") return;
+
+  try {
+    await postJson("/api/session", {
+      action: "delete-lease-document",
+      documentId
+    });
+
+    await openLeaseDocs(modal.leaseId, t("document_deleted"));
+  } catch (error) {
+    setFlash(error instanceof Error ? error.message : t("document_deleted"));
   }
 }
 

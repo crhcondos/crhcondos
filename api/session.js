@@ -251,6 +251,34 @@ export default async function handler(req, res) {
       }
     }
 
+    if (action === "delete-lease-document") {
+      const session = requireSession(req, res);
+      if (!session) return;
+      if (session.role !== "admin") {
+        return res.status(403).json({ error: "You do not have access to this action." });
+      }
+
+      const documentId = String(req.body?.documentId || "").trim();
+      if (!documentId) {
+        return res.status(400).json({ error: "documentId is required." });
+      }
+
+      try {
+        const sql = getSql();
+        await ensureLeaseDocumentsTable(sql);
+        await sql`
+          delete from lease_documents
+          where id = ${documentId}
+        `;
+
+        return res.status(200).json({ ok: true });
+      } catch (error) {
+        return res.status(500).json({
+          error: error instanceof Error ? error.message : "Unable to delete lease document."
+        });
+      }
+    }
+
     return res.status(400).json({ error: "Invalid session action." });
   }
 
