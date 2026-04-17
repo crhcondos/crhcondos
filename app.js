@@ -2119,10 +2119,8 @@ function renderPaymentFormModal() {
           </div>
           <div class="field">
             <label>${safeText(t("method"))}</label>
-            <select name="method" required>
-              <option value="Card via Stripe">Card via Stripe</option>
-              <option value="ACH via Stripe">ACH via Stripe</option>
-            </select>
+            <input value="ACH via Stripe" disabled>
+            <input name="method" type="hidden" value="ACH via Stripe">
           </div>
           <div class="button-row">
             <button class="primary-button" type="submit">${safeText(t("record_payment"))}</button>
@@ -2675,7 +2673,7 @@ async function handlePaymentCreate(event) {
 
   const amount = Number(form.get("amount") || 0);
   const description = String(form.get("description") || "").trim();
-  const method = String(form.get("method") || "Card via Stripe");
+  const method = String(form.get("method") || "ACH via Stripe");
 
   if (state.data.stripe.mode === "live") {
     try {
