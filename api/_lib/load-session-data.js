@@ -63,12 +63,12 @@ export async function loadSessionData(sql, userId, role) {
   const payments =
     role === "admin"
       ? await sql`
-          select id, lease_id, tenant_user_id, stripe_subscription_id, amount_cents, description, method, status, paid_at, created_at
+          select id, lease_id, tenant_user_id, stripe_subscription_id, amount_cents, description, method, status, email_notification_status, email_notification_sent_at, email_notification_error, paid_at, created_at
           from payments
           order by created_at desc
         `
       : await sql`
-          select id, lease_id, tenant_user_id, stripe_subscription_id, amount_cents, description, method, status, paid_at, created_at
+          select id, lease_id, tenant_user_id, stripe_subscription_id, amount_cents, description, method, status, email_notification_status, email_notification_sent_at, email_notification_error, paid_at, created_at
           from payments
           where tenant_user_id = ${userId}
           order by created_at desc

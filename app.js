@@ -261,6 +261,10 @@ const I18N = {
     receipt_status: "Status",
     receipt_generated: "Generated",
     pdf_unavailable: "PDF generation is not available right now.",
+    email_notification: "Email notification",
+    sent: "sent",
+    failed: "failed",
+    not_sent: "not sent",
   },
   es: {
     welcome_brand: "CRH Condos • Coastal Rise Holdings LLC",
@@ -502,6 +506,10 @@ const I18N = {
     receipt_status: "Estado",
     receipt_generated: "Generado",
     pdf_unavailable: "La generacion de PDF no esta disponible en este momento.",
+    email_notification: "Notificacion por correo",
+    sent: "enviado",
+    failed: "fallido",
+    not_sent: "no enviado",
   },
 };
 
@@ -854,6 +862,12 @@ function autopayStatusClass(status) {
   if (status === "Active") return "status-active";
   if (status === "PastDue") return "status-inactive";
   if (status === "Canceled" || status === "Ended") return "status-closed";
+  return "status-pending";
+}
+
+function emailNotificationStatusClass(status) {
+  if (status === "sent") return "status-active";
+  if (status === "failed") return "status-inactive";
   return "status-pending";
 }
 
@@ -1284,6 +1298,7 @@ function renderAdminPayments() {
                   <th>${safeText(t("lease"))}</th>
                   <th>${safeText(t("description"))}</th>
                   <th>${safeText(t("method"))}</th>
+                  <th>${safeText(t("email_notification"))}</th>
                   <th>${safeText(t("amount"))}</th>
                   <th>${safeText(t("actions"))}</th>
                 </tr>
@@ -1324,6 +1339,7 @@ function renderAdminAutopayRow(autopay) {
 
 function renderPaymentRow(payment) {
   const lease = state.data.leases.find((item) => item.id === payment.leaseId);
+  const emailStatus = payment.emailNotificationStatus || "not_sent";
   return `
     <tr>
       <td>${safeText(formatDate(payment.date))}</td>
@@ -1331,6 +1347,7 @@ function renderPaymentRow(payment) {
       <td>${safeText(lease ? lease.property.unit : "—")}</td>
       <td>${safeText(payment.description)}</td>
       <td>${safeText(payment.method)}</td>
+      <td><span class="status-pill ${emailNotificationStatusClass(emailStatus)}">${safeText(t(emailStatus))}</span></td>
       <td>${safeText(formatCurrency(payment.amount))}</td>
       <td>
         <div class="table-action-group">

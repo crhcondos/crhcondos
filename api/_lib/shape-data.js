@@ -78,7 +78,10 @@ export function shapeAppData({
       amount: Number(row.amount_cents) / 100,
       method: row.method,
       description: row.description,
-      status: row.status
+      status: row.status,
+      emailNotificationStatus: row.email_notification_status || "",
+      emailNotificationSentAt: formatDateOnly(row.email_notification_sent_at),
+      emailNotificationError: row.email_notification_error || ""
     })),
     tickets: tickets.map((row) => ({
       id: row.id,
