@@ -1,8 +1,10 @@
 import { shapeAppData } from "./shape-data.js";
 import { ensureAutopaySchema } from "./autopay.js";
+import { ensurePaymentNotificationSchema } from "./payment-notifications.js";
 
 export async function loadSessionData(sql, userId, role) {
   await ensureAutopaySchema(sql);
+  await ensurePaymentNotificationSchema(sql);
 
   const users =
     role === "admin"
