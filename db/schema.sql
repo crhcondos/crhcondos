@@ -56,6 +56,7 @@ create table payments (
   email_notification_status text,
   email_notification_sent_at timestamptz,
   email_notification_error text,
+  email_notification_kind text,
   paid_at timestamptz,
   created_at timestamptz not null default now()
 );

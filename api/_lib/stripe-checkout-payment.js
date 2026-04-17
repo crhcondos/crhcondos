@@ -1,4 +1,7 @@
-import { sendPaymentNotificationForPayment } from "./payment-notifications.js";
+import {
+  paymentNotificationKinds,
+  sendPaymentNotificationForPayment
+} from "./payment-notifications.js";
 
 export async function upsertCheckoutPayment(sql, session, statusOverride) {
   const leaseId = String(session.metadata?.leaseId || "").trim();
@@ -60,8 +63,12 @@ export async function upsertCheckoutPayment(sql, session, statusOverride) {
 
   const notificationResult =
     paymentStatus === "Paid"
-      ? await sendPaymentNotificationForPayment(sql, paymentId)
-      : { status: "", warning: "" };
+      ? await sendPaymentNotificationForPayment(sql, paymentId, {
+          kind: paymentNotificationKinds.received
+        })
+      : await sendPaymentNotificationForPayment(sql, paymentId, {
+          kind: paymentNotificationKinds.pending
+        });
 
   return {
     paymentId,

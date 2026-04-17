@@ -1,4 +1,7 @@
-import { sendPaymentNotificationForPayment } from "./payment-notifications.js";
+import {
+  paymentNotificationKinds,
+  sendPaymentNotificationForPayment
+} from "./payment-notifications.js";
 
 export async function ensureAutopaySchema(sql) {
   await sql`
@@ -204,7 +207,9 @@ export async function upsertAutopayPayment(sql, invoice, subscription) {
   `;
 
   if (invoiceStatus === "Paid") {
-    await sendPaymentNotificationForPayment(sql, paymentId);
+    await sendPaymentNotificationForPayment(sql, paymentId, {
+      kind: paymentNotificationKinds.received
+    });
   }
 }
 

@@ -2,6 +2,8 @@ import nodemailer from "nodemailer";
 
 const EMAIL_STATUS_SENT = "sent";
 const EMAIL_STATUS_FAILED = "failed";
+const EMAIL_KIND_RECEIVED = "payment_received";
+const EMAIL_KIND_PENDING = "payment_pending";
 
 function getSmtpConfig() {
   const user = String(process.env.GMAIL_SMTP_EMAIL || "").trim();
@@ -38,7 +40,7 @@ function buildPropertyLabel(property) {
     .join(", ");
 }
 
-function buildEmailText(details) {
+function buildReceivedEmailText(details) {
   const remainingBalanceLine =
     typeof details.remainingBalanceCents === "number"
       ? `Remaining balance: ${formatCurrencyFromCents(details.remainingBalanceCents)}`
@@ -60,7 +62,7 @@ function buildEmailText(details) {
   ].join("\n");
 }
 
-function buildEmailHtml(details) {
+function buildReceivedEmailHtml(details) {
   const remainingBalanceLine =
     typeof details.remainingBalanceCents === "number"
       ? formatCurrencyFromCents(details.remainingBalanceCents)
@@ -82,6 +84,52 @@ function buildEmailHtml(details) {
   `;
 }
 
+function buildPendingEmailText(details) {
+  const remainingBalanceLine =
+    typeof details.remainingBalanceCents === "number"
+      ? `Remaining balance after this pending payment clears: ${formatCurrencyFromCents(details.remainingBalanceCents)}`
+      : "Remaining balance after this pending payment clears: Not available";
+
+  return [
+    `Hello ${details.tenantName},`,
+    "",
+    "We received your payment request and it is currently scheduled or pending confirmation.",
+    "Please note that this is not a final payment receipt yet.",
+    "",
+    `Property / Unit: ${details.propertyLabel}`,
+    `Scheduled payment amount: ${formatCurrencyFromCents(details.amountCents)}`,
+    `Submission date: ${formatDateTime(details.paymentDate)}`,
+    remainingBalanceLine,
+    "",
+    "Once the payment fully clears, you will receive a separate confirmation email.",
+    "",
+    "CRH Condos"
+  ].join("\n");
+}
+
+function buildPendingEmailHtml(details) {
+  const remainingBalanceLine =
+    typeof details.remainingBalanceCents === "number"
+      ? formatCurrencyFromCents(details.remainingBalanceCents)
+      : "Not available";
+
+  return `
+    <div style="font-family: Arial, sans-serif; color: #153152; line-height: 1.6;">
+      <p>Hello ${escapeHtml(details.tenantName)},</p>
+      <p>We received your payment request and it is currently scheduled or pending confirmation.</p>
+      <p><strong>Please note:</strong> this is not a final payment receipt yet.</p>
+      <p>
+        <strong>Property / Unit:</strong> ${escapeHtml(details.propertyLabel)}<br>
+        <strong>Scheduled payment amount:</strong> ${escapeHtml(formatCurrencyFromCents(details.amountCents))}<br>
+        <strong>Submission date:</strong> ${escapeHtml(formatDateTime(details.paymentDate))}<br>
+        <strong>Remaining balance after this pending payment clears:</strong> ${escapeHtml(remainingBalanceLine)}
+      </p>
+      <p>Once the payment fully clears, you will receive a separate confirmation email.</p>
+      <p>CRH Condos</p>
+    </div>
+  `;
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -98,6 +146,7 @@ async function buildPaymentEmailDetails(sql, paymentId) {
       p.paid_at,
       p.created_at,
       p.email_notification_status,
+      p.email_notification_kind,
       u.first_name,
       u.last_name,
       u.email,
@@ -138,15 +187,17 @@ async function buildPaymentEmailDetails(sql, paymentId) {
     amountCents: Number(payment.amount_cents || 0),
     paymentDate,
     remainingBalanceCents,
-    emailNotificationStatus: payment.email_notification_status
+    emailNotificationStatus: payment.email_notification_status,
+    emailNotificationKind: String(payment.email_notification_kind || "").trim()
   };
 }
 
-async function markEmailStatus(sql, paymentId, status, errorMessage = null) {
+async function markEmailStatus(sql, paymentId, status, kind, errorMessage = null) {
   await sql`
     update payments
     set
       email_notification_status = ${status},
+      email_notification_kind = ${kind},
       email_notification_sent_at = ${status === EMAIL_STATUS_SENT ? new Date().toISOString() : null},
       email_notification_error = ${errorMessage}
     where id = ${String(paymentId)}
@@ -166,10 +217,32 @@ export async function ensurePaymentNotificationSchema(sql) {
     alter table payments
     add column if not exists email_notification_error text
   `;
+  await sql`
+    alter table payments
+    add column if not exists email_notification_kind text
+  `;
 }
 
-export async function sendPaymentNotificationForPayment(sql, paymentId) {
+function getNotificationContent(kind, details) {
+  if (kind === EMAIL_KIND_PENDING) {
+    return {
+      subject: "Payment Submitted - Pending Confirmation",
+      text: buildPendingEmailText(details),
+      html: buildPendingEmailHtml(details)
+    };
+  }
+
+  return {
+    subject: "Payment Received Confirmation",
+    text: buildReceivedEmailText(details),
+    html: buildReceivedEmailHtml(details)
+  };
+}
+
+export async function sendPaymentNotificationForPayment(sql, paymentId, options = {}) {
   await ensurePaymentNotificationSchema(sql);
+  const notificationKind =
+    options.kind === EMAIL_KIND_PENDING ? EMAIL_KIND_PENDING : EMAIL_KIND_RECEIVED;
 
   const details = await buildPaymentEmailDetails(sql, paymentId);
   if (!details) {
@@ -179,12 +252,21 @@ export async function sendPaymentNotificationForPayment(sql, paymentId) {
     };
   }
 
-  if (details.emailNotificationStatus === EMAIL_STATUS_SENT) {
+  if (
+    details.emailNotificationStatus === EMAIL_STATUS_SENT &&
+    details.emailNotificationKind === notificationKind
+  ) {
     return { status: EMAIL_STATUS_SENT, warning: "" };
   }
 
   if (!isValidEmail(details.recipientEmail)) {
-    await markEmailStatus(sql, details.paymentId, EMAIL_STATUS_FAILED, "Invalid tenant email format.");
+    await markEmailStatus(
+      sql,
+      details.paymentId,
+      EMAIL_STATUS_FAILED,
+      notificationKind,
+      "Invalid tenant email format."
+    );
     return {
       status: EMAIL_STATUS_FAILED,
       warning: "Payment saved, but notification email could not be sent."
@@ -193,7 +275,13 @@ export async function sendPaymentNotificationForPayment(sql, paymentId) {
 
   const smtpConfig = getSmtpConfig();
   if (!smtpConfig.user || !smtpConfig.pass) {
-    await markEmailStatus(sql, details.paymentId, EMAIL_STATUS_FAILED, "Missing Gmail SMTP environment variables.");
+    await markEmailStatus(
+      sql,
+      details.paymentId,
+      EMAIL_STATUS_FAILED,
+      notificationKind,
+      "Missing Gmail SMTP environment variables."
+    );
     return {
       status: EMAIL_STATUS_FAILED,
       warning: "Payment saved, but notification email could not be sent."
@@ -201,6 +289,7 @@ export async function sendPaymentNotificationForPayment(sql, paymentId) {
   }
 
   try {
+    const content = getNotificationContent(notificationKind, details);
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -212,18 +301,19 @@ export async function sendPaymentNotificationForPayment(sql, paymentId) {
     await transporter.sendMail({
       from: smtpConfig.user,
       to: details.recipientEmail,
-      subject: "Payment Received Confirmation",
-      text: buildEmailText(details),
-      html: buildEmailHtml(details)
+      subject: content.subject,
+      text: content.text,
+      html: content.html
     });
 
-    await markEmailStatus(sql, details.paymentId, EMAIL_STATUS_SENT, null);
+    await markEmailStatus(sql, details.paymentId, EMAIL_STATUS_SENT, notificationKind, null);
     return { status: EMAIL_STATUS_SENT, warning: "" };
   } catch (error) {
     await markEmailStatus(
       sql,
       details.paymentId,
       EMAIL_STATUS_FAILED,
+      notificationKind,
       error instanceof Error ? error.message : "Unknown email delivery error."
     );
     return {
@@ -232,3 +322,8 @@ export async function sendPaymentNotificationForPayment(sql, paymentId) {
     };
   }
 }
+
+export const paymentNotificationKinds = {
+  received: EMAIL_KIND_RECEIVED,
+  pending: EMAIL_KIND_PENDING
+};
