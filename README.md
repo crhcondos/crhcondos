@@ -36,6 +36,7 @@ This repo now includes:
 - `api/update-tenant-profile.js` to persist tenant profile edits
 - `api/create-ticket.js`, `api/update-ticket-status.js`, and `api/delete-ticket.js` for ticket writes
 - `api/record-payment.js` to persist demo-mode payment records in Postgres
+- `api/_lib/payment-notifications.js` to send tenant payment confirmation emails through Gmail SMTP
 - `api/save-lease.js` and `api/delete-lease.js` for admin lease CRUD writes
 - `api/stripe-webhook.js` to verify Stripe webhook signatures
 - `db/schema.sql` with a starter Postgres schema
@@ -43,6 +44,24 @@ This repo now includes:
 - `.env.example` with the environment variables needed on Vercel
 
 Add `SESSION_SECRET` in Vercel before relying on the signed session cookie in production. If it is missing, the server currently falls back to `POSTGRES_PASSWORD` so the app can still boot, but an explicit session secret is the recommended setup.
+
+## Gmail payment notifications
+
+Payment confirmation emails are sent only after a payment is successfully saved.
+
+To enable Gmail SMTP in Vercel, add these environment variables:
+
+- `GMAIL_SMTP_EMAIL`
+  Use the Gmail address that will send the payment confirmation emails.
+- `GMAIL_SMTP_APP_PASSWORD`
+  Use the Gmail App Password generated for that Gmail account. Do not use your normal Gmail password and do not hardcode it in the codebase.
+
+Behavior:
+
+- The app validates the tenant email format before trying to send.
+- If the payment is saved and the email sends successfully, the payment record is marked with email status `sent`.
+- If the payment is saved but the email fails, the payment still remains saved and the record is marked with email status `failed`.
+- The tenant-facing flow shows: `Payment saved, but notification email could not be sent.` when delivery fails.
 
 ## Stripe production wiring
 
@@ -74,6 +93,7 @@ Important notes:
 - The latest Stripe API version referenced by the skill used for this build is `2026-02-25.clover`
 - For production, replace browser `localStorage` with a real database plus authenticated server APIs
 - The frontend now attempts a real Checkout redirect automatically when `STRIPE_MODE=live`
+- Recurring and one-time successful payments can now send confirmation emails through Gmail SMTP after the payment is stored
 
 ## Remaining production blockers
 

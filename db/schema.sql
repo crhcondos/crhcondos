@@ -53,6 +53,9 @@ create table payments (
   description text not null,
   method text not null,
   status text not null check (status in ('Pending', 'Paid', 'Failed')),
+  email_notification_status text,
+  email_notification_sent_at timestamptz,
+  email_notification_error text,
   paid_at timestamptz,
   created_at timestamptz not null default now()
 );

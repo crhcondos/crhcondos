@@ -2676,16 +2676,29 @@ async function handlePaymentCreate(event) {
   const paymentId = uid("pay");
 
   try {
-    if (window.location.protocol.startsWith("http")) {
-      await postJson("/api/record-payment", {
-        id: paymentId,
-        amount,
-        description,
-        method
-      });
-    }
-  } catch (error) {
-    setFlash(error instanceof Error ? error.message : t("payment_recorded"));
+      if (window.location.protocol.startsWith("http")) {
+        const result = await postJson("/api/record-payment", {
+          id: paymentId,
+          amount,
+          description,
+          method
+        });
+
+        if (result?.warning) {
+          setState((draft) => {
+            draft.ui.modal = null;
+            draft.ui.flash = result.warning;
+            draft.session.page = "payments";
+          });
+
+          if (state.session.role === "tenant") {
+            await refreshSessionData();
+          }
+          return;
+        }
+      }
+    } catch (error) {
+      setFlash(error instanceof Error ? error.message : t("payment_recorded"));
     return;
   }
 
@@ -3215,12 +3228,24 @@ async function handleStripeReturnRedirect() {
   if (paymentStatus === "success") {
     try {
       if (checkoutSessionId) {
-        await postJson("/api/session", {
-          action: "confirm-payment",
-          sessionId: checkoutSessionId
-        });
-      }
-    } catch (_error) {
+          const result = await postJson("/api/session", {
+            action: "confirm-payment",
+            sessionId: checkoutSessionId
+          });
+
+          if (result?.warning) {
+            await refreshSessionData();
+            setState((draft) => {
+              draft.ui.modal = null;
+              draft.session.page = "payments";
+              draft.ui.flash = result.warning;
+            });
+            const cleanUrl = `${window.location.pathname}${window.location.hash || ""}`;
+            window.history.replaceState({}, "", cleanUrl);
+            return;
+          }
+        }
+      } catch (_error) {
       await refreshSessionData();
       setState((draft) => {
         draft.ui.modal = null;

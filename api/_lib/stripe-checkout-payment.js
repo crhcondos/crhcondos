@@ -1,3 +1,5 @@
+import { sendPaymentNotificationForPayment } from "./payment-notifications.js";
+
 export async function upsertCheckoutPayment(sql, session, statusOverride) {
   const leaseId = String(session.metadata?.leaseId || "").trim();
   const tenantUserId = String(session.metadata?.tenantUserId || "").trim();
@@ -22,6 +24,8 @@ export async function upsertCheckoutPayment(sql, session, statusOverride) {
   const paymentStatus =
     statusOverride || (session.payment_status === "paid" ? "Paid" : "Pending");
 
+  const paymentId = `pay_${session.id}`;
+
   await sql`
     insert into payments (
       id,
@@ -35,7 +39,7 @@ export async function upsertCheckoutPayment(sql, session, statusOverride) {
       paid_at
     )
     values (
-      ${`pay_${session.id}`},
+      ${paymentId},
       ${leaseId},
       ${tenantUserId},
       ${String(session.id)},
@@ -54,9 +58,17 @@ export async function upsertCheckoutPayment(sql, session, statusOverride) {
       paid_at = excluded.paid_at
   `;
 
+  const notificationResult =
+    paymentStatus === "Paid"
+      ? await sendPaymentNotificationForPayment(sql, paymentId)
+      : { status: "", warning: "" };
+
   return {
+    paymentId,
     leaseId,
     tenantUserId,
-    status: paymentStatus
+    status: paymentStatus,
+    emailNotificationStatus: notificationResult.status || "",
+    warning: notificationResult.warning || ""
   };
 }

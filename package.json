@@ -9,6 +9,7 @@
   "dependencies": {
     "@neondatabase/serverless": "^1.0.1",
     "bcryptjs": "^3.0.2",
+    "nodemailer": "^6.9.13",
     "stripe": "^18.5.0"
   }
 }

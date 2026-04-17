@@ -1,3 +1,5 @@
+import { sendPaymentNotificationForPayment } from "./payment-notifications.js";
+
 export async function ensureAutopaySchema(sql) {
   await sql`
     alter table users
@@ -156,6 +158,8 @@ export async function upsertAutopayPayment(sql, invoice, subscription) {
     ? new Date(Number(invoice.status_transitions.paid_at) * 1000).toISOString()
     : (invoiceStatus === "Paid" ? new Date().toISOString() : null);
 
+  const paymentId = `pay_invoice_${invoiceId}`;
+
   await sql`
     insert into payments (
       id,
@@ -170,7 +174,7 @@ export async function upsertAutopayPayment(sql, invoice, subscription) {
       paid_at
     )
     values (
-      ${`pay_invoice_${invoiceId}`},
+      ${paymentId},
       ${leaseId},
       ${tenantUserId},
       ${invoiceId},
@@ -198,6 +202,10 @@ export async function upsertAutopayPayment(sql, invoice, subscription) {
       updated_at = now()
     where stripe_subscription_id = ${subscriptionId}
   `;
+
+  if (invoiceStatus === "Paid") {
+    await sendPaymentNotificationForPayment(sql, paymentId);
+  }
 }
 
 export async function updateAutopayStatus(sql, subscription) {

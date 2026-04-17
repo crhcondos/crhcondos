@@ -128,7 +128,11 @@ export default async function handler(req, res) {
         }
 
         const payment = await upsertCheckoutPayment(sql, checkoutSession);
-        return res.status(200).json({ ok: true, payment });
+        return res.status(200).json({
+          ok: true,
+          payment,
+          warning: payment.warning || ""
+        });
       } catch (error) {
         return res.status(500).json({
           error: error instanceof Error ? error.message : "Unable to confirm Stripe payment."
